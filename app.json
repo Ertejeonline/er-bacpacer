@@ -1,0 +1,14 @@
+{
+  "package_id": "com.demo.eveng2",
+  "edition": "202601",
+  "name": "G2 Demo",
+  "version": "1.0.0",
+  "min_app_version": "0.1.0",
+  "min_sdk_version": "0.0.10",
+  "supported_languages": ["en"],
+  "tagline": "Reference app showcasing all Even G2 SDK features",
+  "description": "Demonstrates text containers, list containers, image containers, events, borders, Unicode rendering, and multi-container layouts.",
+  "author": "nick",
+  "entrypoint": "index.html",
+  "permissions": []
+}

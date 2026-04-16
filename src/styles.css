@@ -1,0 +1,55 @@
+@import "even-toolkit/web/theme-light.css";
+@import "even-toolkit/web/typography.css";
+@import "even-toolkit/web/utilities.css";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--spacing-card-margin);
+  -webkit-font-smoothing: antialiased;
+}
+
+#subtitle {
+  color: var(--color-text-dim);
+  text-align: center;
+  margin: 0 0 var(--spacing-section);
+}
+
+#subtitle strong {
+  color: var(--color-text);
+}
+
+#log-panel {
+  margin-top: var(--spacing-section);
+  border-top: 1px solid var(--color-border, #333);
+  padding-top: var(--spacing-card-margin);
+}
+
+#log-panel summary {
+  cursor: pointer;
+  color: var(--color-text-dim);
+  font-size: 0.9em;
+  user-select: none;
+}
+
+#event-log {
+  margin-top: var(--spacing-card-margin);
+  padding: var(--spacing-card-margin);
+  background: var(--color-input-bg, #1a1a1a);
+  border-radius: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75em;
+  line-height: 1.4;
+  color: var(--color-text-dim);
+  max-height: 320px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
