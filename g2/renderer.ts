@@ -175,16 +175,22 @@ const MENU_ITEMS = [
 export async function showMenu(): Promise<void> {
   state.screen = 'menu'
 
+  // Center the menu at 80% size
+  const menuWidth = Math.round(W * 0.8)  // 461
+  const menuHeight = Math.round(H * 0.8) // 230
+  const menuX = Math.round((W - menuWidth) / 2)  // 58
+  const menuY = Math.round((H - menuHeight) / 2) // 29
+
   await rebuildPage({
     containerTotalNum: 1,
     listObject: [
       new ListContainerProperty({
         containerID: 1,
         containerName: 'menu',
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
+        xPosition: menuX,
+        yPosition: menuY,
+        width: menuWidth,
+        height: menuHeight,
         borderWidth: 1,
         borderColor: 5,
         borderRadius: 4,
@@ -192,7 +198,7 @@ export async function showMenu(): Promise<void> {
         isEventCapture: 1,
         itemContainer: new ListItemContainerProperty({
           itemCount: MENU_ITEMS.length,
-          itemWidth: W - 10,
+          itemWidth: menuWidth - 10,
           isItemSelectBorderEn: 1,
           itemName: MENU_ITEMS,
         }),
