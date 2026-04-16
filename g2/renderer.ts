@@ -14,6 +14,30 @@ import { state, getBridge } from './state'
 const W = 576
 const H = 288
 
+// --- Time display ---
+
+function getCurrentTime(): string {
+  const now = new Date()
+  return now.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+export async function updateTimeDisplay(): Promise<void> {
+  const b = getBridge()
+  if (!b) return
+
+  await b.textContainerUpgrade(
+    new TextContainerUpgrade({
+      containerID: 1,
+      containerName: 'document',
+      content: getCurrentTime(),
+    }),
+  )
+}
+
 // --- Rebuild helper ---
 
 async function rebuildPage(config: {
@@ -175,35 +199,50 @@ const MENU_ITEMS = [
 export async function showMenu(): Promise<void> {
   state.screen = 'menu'
 
-  // Center the menu at 80% size
-  const menuWidth = Math.round(W * 0.8)  // 461
-  const menuHeight = Math.round(H * 0.8) // 230
-  const menuX = Math.round((W - menuWidth) / 2)  // 58
-  const menuY = Math.round((H - menuHeight) / 2) // 29
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  const menuContainer = new ListContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    borderWidth: 1,
+    borderColor: 5,
+    borderRadius: 4,
+    paddingLength: 4,
+    isEventCapture: 1,
+    itemContainer: new ListItemContainerProperty({
+      itemCount: MENU_ITEMS.length,
+      itemWidth: mainWidth - 10,
+      isItemSelectBorderEn: 1,
+      itemName: MENU_ITEMS,
+    }),
+  })
 
   await rebuildPage({
-    containerTotalNum: 1,
-    listObject: [
-      new ListContainerProperty({
-        containerID: 1,
-        containerName: 'menu',
-        xPosition: menuX,
-        yPosition: menuY,
-        width: menuWidth,
-        height: menuHeight,
-        borderWidth: 1,
-        borderColor: 5,
-        borderRadius: 4,
-        paddingLength: 4,
-        isEventCapture: 1,
-        itemContainer: new ListItemContainerProperty({
-          itemCount: MENU_ITEMS.length,
-          itemWidth: menuWidth - 10,
-          isItemSelectBorderEn: 1,
-          itemName: MENU_ITEMS,
-        }),
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer],
+    listObject: [menuContainer],
   })
 }
 
@@ -212,21 +251,41 @@ export async function showMenu(): Promise<void> {
 export async function showRunMyApp(): Promise<void> {
   state.screen = 'run-my-app'
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  const runMyAppContainer = new TextContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    content: 'Hi GT',
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    isEventCapture: 1,
+    paddingLength: 8,
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    textObject: [
-      new TextContainerProperty({
-        containerID: 1,
-        containerName: 'run-my-app',
-        content: 'Hi GT',
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        isEventCapture: 1,
-        paddingLength: 8,
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer, runMyAppContainer],
   })
 }
 
@@ -234,6 +293,26 @@ export async function showRunMyApp(): Promise<void> {
 
 export async function showTextBasic(): Promise<void> {
   state.screen = 'text-basic'
+
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
 
   const content = [
     'Text container demo',
@@ -251,21 +330,21 @@ export async function showTextBasic(): Promise<void> {
     'Double-tap to go back.',
   ].join('\n')
 
+  const textContainer = new TextContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    content,
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    isEventCapture: 1,
+    paddingLength: 8,
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    textObject: [
-      new TextContainerProperty({
-        containerID: 1,
-        containerName: 'text',
-        content,
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        isEventCapture: 1,
-        paddingLength: 8,
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer, textContainer],
   })
 }
 
@@ -274,29 +353,54 @@ export async function showTextBasic(): Promise<void> {
 export async function showTextBorders(): Promise<void> {
   state.screen = 'text-borders'
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container dimensions (80% centered)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  // Create 4 containers within the main area
+  const quadWidth = Math.round(mainWidth / 2)  // 231
+  const quadHeight = Math.round(mainHeight / 2) // 115
+
   await rebuildPage({
-    containerTotalNum: 4,
+    containerTotalNum: 5,
     textObject: [
+      documentContainer,
       new TextContainerProperty({
-        containerID: 1,
+        containerID: 2,
         containerName: 'b0',
         content: 'No border\npadding=0',
-        xPosition: 0,
-        yPosition: 0,
-        width: W / 2,
-        height: H / 2,
+        xPosition: mainX,
+        yPosition: mainY,
+        width: quadWidth,
+        height: quadHeight,
         isEventCapture: 1,
         paddingLength: 0,
         borderWidth: 0,
       }),
       new TextContainerProperty({
-        containerID: 2,
+        containerID: 3,
         containerName: 'b1',
         content: 'border=1 color=5\nradius=4 pad=8',
-        xPosition: W / 2,
-        yPosition: 0,
-        width: W / 2,
-        height: H / 2,
+        xPosition: mainX + quadWidth,
+        yPosition: mainY,
+        width: quadWidth,
+        height: quadHeight,
         isEventCapture: 0,
         paddingLength: 8,
         borderWidth: 1,
@@ -304,13 +408,13 @@ export async function showTextBorders(): Promise<void> {
         borderRadius: 4,
       }),
       new TextContainerProperty({
-        containerID: 3,
+        containerID: 4,
         containerName: 'b2',
         content: 'border=3 color=10\nradius=8 pad=16',
-        xPosition: 0,
-        yPosition: H / 2,
-        width: W / 2,
-        height: H / 2,
+        xPosition: mainX,
+        yPosition: mainY + quadHeight,
+        width: quadWidth,
+        height: quadHeight,
         isEventCapture: 0,
         paddingLength: 16,
         borderWidth: 3,
@@ -318,13 +422,13 @@ export async function showTextBorders(): Promise<void> {
         borderRadius: 8,
       }),
       new TextContainerProperty({
-        containerID: 4,
+        containerID: 5,
         containerName: 'b3',
         content: 'border=5 color=15\nradius=10 pad=32',
-        xPosition: W / 2,
-        yPosition: H / 2,
-        width: W / 2,
-        height: H / 2,
+        xPosition: mainX + quadWidth,
+        yPosition: mainY + quadHeight,
+        width: quadWidth,
+        height: quadHeight,
         isEventCapture: 0,
         paddingLength: 32,
         borderWidth: 5,
@@ -410,21 +514,41 @@ const UNICODE_PAGES = [
 async function renderUnicodePage(): Promise<void> {
   const content = UNICODE_PAGES[state.unicodePage]
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  const unicodeContainer = new TextContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    content,
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    isEventCapture: 1,
+    paddingLength: 8,
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    textObject: [
-      new TextContainerProperty({
-        containerID: 1,
-        containerName: 'unicode',
-        content,
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        isEventCapture: 1,
-        paddingLength: 8,
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer, unicodeContainer],
   })
 }
 
@@ -438,28 +562,49 @@ export async function nextUnicodePage(): Promise<void> {
 export async function showListBasic(): Promise<void> {
   state.screen = 'list-basic'
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
   const items = Array.from({ length: 15 }, (_, i) => `Item ${i + 1}`)
 
+  const listContainer = new ListContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    paddingLength: 4,
+    isEventCapture: 1,
+    itemContainer: new ListItemContainerProperty({
+      itemCount: items.length,
+      itemWidth: mainWidth - 10,
+      isItemSelectBorderEn: 1,
+      itemName: items,
+    }),
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    listObject: [
-      new ListContainerProperty({
-        containerID: 1,
-        containerName: 'list',
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        paddingLength: 4,
-        isEventCapture: 1,
-        itemContainer: new ListItemContainerProperty({
-          itemCount: items.length,
-          itemWidth: W - 10,
-          isItemSelectBorderEn: 1,
-          itemName: items,
-        }),
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer],
+    listObject: [listContainer],
   })
 }
 
@@ -467,6 +612,26 @@ export async function showListBasic(): Promise<void> {
 
 export async function showListStyled(): Promise<void> {
   state.screen = 'list-styled'
+
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
 
   const items = [
     '\u25CF Climate ON',
@@ -477,29 +642,30 @@ export async function showListStyled(): Promise<void> {
     '\u203A More options',
   ]
 
+  const listContainer = new ListContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    borderWidth: 2,
+    borderColor: 10,
+    borderRadius: 6,
+    paddingLength: 8,
+    isEventCapture: 1,
+    itemContainer: new ListItemContainerProperty({
+      itemCount: items.length,
+      itemWidth: mainWidth - 20,
+      isItemSelectBorderEn: 1,
+      itemName: items,
+    }),
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    listObject: [
-      new ListContainerProperty({
-        containerID: 1,
-        containerName: 'styled',
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        borderWidth: 2,
-        borderColor: 10,
-        borderRadius: 6,
-        paddingLength: 8,
-        isEventCapture: 1,
-        itemContainer: new ListItemContainerProperty({
-          itemCount: items.length,
-          itemWidth: W - 20,
-          isItemSelectBorderEn: 1,
-          itemName: items,
-        }),
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer],
+    listObject: [listContainer],
   })
 }
 
@@ -508,54 +674,75 @@ export async function showListStyled(): Promise<void> {
 export async function showImageFullscreen(): Promise<void> {
   state.screen = 'image-fullscreen'
 
-  const tileW = 288
-  const tileH = 144
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  const tileW = Math.round(mainWidth / 2)  // 231
+  const tileH = Math.round(mainHeight / 2) // 115
 
   await rebuildPage({
-    containerTotalNum: 5,
+    containerTotalNum: 6,
     textObject: [
+      documentContainer,
       new TextContainerProperty({
-        containerID: 1,
-        containerName: 'evt',
+        containerID: 2,
+        containerName: 'main',
         content: ' ',
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
+        xPosition: mainX,
+        yPosition: mainY,
+        width: mainWidth,
+        height: mainHeight,
         isEventCapture: 1,
         paddingLength: 0,
       }),
     ],
     imageObject: [
       new ImageContainerProperty({
-        containerID: 2,
-        containerName: 'tl',
-        xPosition: 0,
-        yPosition: 0,
-        width: tileW,
-        height: tileH,
-      }),
-      new ImageContainerProperty({
         containerID: 3,
-        containerName: 'tr',
-        xPosition: tileW,
-        yPosition: 0,
+        containerName: 'tl',
+        xPosition: mainX,
+        yPosition: mainY,
         width: tileW,
         height: tileH,
       }),
       new ImageContainerProperty({
         containerID: 4,
-        containerName: 'bl',
-        xPosition: 0,
-        yPosition: tileH,
+        containerName: 'tr',
+        xPosition: mainX + tileW,
+        yPosition: mainY,
         width: tileW,
         height: tileH,
       }),
       new ImageContainerProperty({
         containerID: 5,
+        containerName: 'bl',
+        xPosition: mainX,
+        yPosition: mainY + tileH,
+        width: tileW,
+        height: tileH,
+      }),
+      new ImageContainerProperty({
+        containerID: 6,
         containerName: 'br',
-        xPosition: tileW,
-        yPosition: tileH,
+        xPosition: mainX + tileW,
+        yPosition: mainY + tileH,
         width: tileW,
         height: tileH,
       }),
@@ -567,7 +754,7 @@ export async function showImageFullscreen(): Promise<void> {
 
   for (let i = 0; i < 4; i++) {
     const canvas = generatePattern(tileW, tileH, patterns[i], `${patterns[i]} ${tileW}x${tileH}`)
-    await pushImage(i + 2, names[i], await canvasToPng(canvas))
+    await pushImage(i + 3, names[i], await canvasToPng(canvas))
   }
 }
 
@@ -576,25 +763,49 @@ export async function showImageFullscreen(): Promise<void> {
 export async function showMaxContainers(): Promise<void> {
   state.screen = 'max-containers'
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  // Scale factor for fitting content into main container
+  const scaleX = mainWidth / W
+  const scaleY = mainHeight / H
+
   // Layout: top row of 4 text labels, middle row of 4 images, bottom has 3 text + 1 list
-  const imgW = 144
-  const imgH = 96
-  const rowH = 96
-  const topH = 96
-  const bottomH = H - topH - rowH
+  const imgW = Math.round(144 * scaleX)  // scaled image width
+  const imgH = Math.round(96 * scaleY)   // scaled image height
+  const rowH = Math.round(96 * scaleY)   // scaled row height
+  const topH = Math.round(96 * scaleY)   // scaled top height
+  const bottomH = mainHeight - topH - rowH  // remaining height for bottom row
 
   const textContainers: TextContainerProperty[] = []
   const imageContainers: ImageContainerProperty[] = []
 
-  // Row 1: 4 text containers across top (IDs 1-4)
+  // Row 1: 4 text containers across top (IDs 2-5)
   for (let i = 0; i < 4; i++) {
     textContainers.push(new TextContainerProperty({
-      containerID: i + 1,
+      containerID: i + 2,
       containerName: `t${i}`,
       content: `Text ${i + 1}\nborder=${i} color=${i * 5}`,
-      xPosition: i * (W / 4),
-      yPosition: 0,
-      width: W / 4,
+      xPosition: mainX + Math.round(i * (mainWidth / 4)),
+      yPosition: mainY,
+      width: Math.round(mainWidth / 4),
       height: topH,
       isEventCapture: i === 0 ? 1 : 0,
       paddingLength: 4,
@@ -604,27 +815,27 @@ export async function showMaxContainers(): Promise<void> {
     }))
   }
 
-  // Row 2: 4 image containers (IDs 5-8)
+  // Row 2: 4 image containers (IDs 6-9)
   for (let i = 0; i < 4; i++) {
     imageContainers.push(new ImageContainerProperty({
-      containerID: i + 5,
+      containerID: i + 6,
       containerName: `i${i}`,
-      xPosition: i * imgW,
-      yPosition: topH,
+      xPosition: mainX + Math.round(i * imgW),
+      yPosition: mainY + topH,
       width: imgW,
       height: imgH,
     }))
   }
 
-  // Row 3: 3 more text containers (IDs 9-11) + 1 list (ID 12)
-  const bottomColW = W / 4
+  // Row 3: 3 more text containers (IDs 10-12) + 1 list (ID 13)
+  const bottomColW = Math.round(mainWidth / 4)
   for (let i = 0; i < 3; i++) {
     textContainers.push(new TextContainerProperty({
-      containerID: i + 9,
+      containerID: i + 10,
       containerName: `b${i}`,
       content: `Bottom ${i + 1}`,
-      xPosition: i * bottomColW,
-      yPosition: topH + rowH,
+      xPosition: mainX + Math.round(i * bottomColW),
+      yPosition: mainY + topH + rowH,
       width: bottomColW,
       height: bottomH,
       isEventCapture: 0,
@@ -635,10 +846,10 @@ export async function showMaxContainers(): Promise<void> {
   }
 
   const listContainer = new ListContainerProperty({
-    containerID: 12,
+    containerID: 13,
     containerName: 'lst',
-    xPosition: 3 * bottomColW,
-    yPosition: topH + rowH,
+    xPosition: mainX + Math.round(3 * bottomColW),
+    yPosition: mainY + topH + rowH,
     width: bottomColW,
     height: bottomH,
     paddingLength: 2,
@@ -652,8 +863,8 @@ export async function showMaxContainers(): Promise<void> {
   })
 
   await rebuildPage({
-    containerTotalNum: 12,
-    textObject: textContainers,
+    containerTotalNum: 13,
+    textObject: [documentContainer, ...textContainers],
     listObject: [listContainer],
     imageObject: imageContainers,
   })
@@ -662,7 +873,7 @@ export async function showMaxContainers(): Promise<void> {
   const patterns: Pattern[] = ['dots', 'stripes-h', 'stripes-v', 'diagonal']
   for (let i = 0; i < 4; i++) {
     const canvas = generatePattern(imgW, imgH, patterns[i], patterns[i])
-    await pushImage(i + 5, `i${i}`, await canvasToPng(canvas))
+    await pushImage(i + 6, `i${i}`, await canvasToPng(canvas))
   }
 }
 
@@ -673,21 +884,41 @@ export async function showEvents(): Promise<void> {
   state.eventCount = 0
   state.lastEvent = 'none'
 
+  // Document container (small time display at top-left)
+  const documentContainer = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'document',
+    content: getCurrentTime(),
+    xPosition: 0,
+    yPosition: 0,
+    width: Math.round(W * 0.2),  // 80% smaller = 20% of screen width
+    height: Math.round(H * 0.2), // 80% smaller = 20% of screen height
+    isEventCapture: 0,
+    paddingLength: 2,
+    borderWidth: 0,
+  })
+
+  // Main container (80% centered, contains the actual content)
+  const mainWidth = Math.round(W * 0.8)  // 461
+  const mainHeight = Math.round(H * 0.8) // 230
+  const mainX = Math.round((W - mainWidth) / 2)  // 58
+  const mainY = Math.round((H - mainHeight) / 2) // 29
+
+  const eventsContainer = new TextContainerProperty({
+    containerID: 2,
+    containerName: 'main',
+    content: eventsContent(),
+    xPosition: mainX,
+    yPosition: mainY,
+    width: mainWidth,
+    height: mainHeight,
+    isEventCapture: 1,
+    paddingLength: 8,
+  })
+
   await rebuildPage({
-    containerTotalNum: 1,
-    textObject: [
-      new TextContainerProperty({
-        containerID: 1,
-        containerName: 'events',
-        content: eventsContent(),
-        xPosition: 0,
-        yPosition: 0,
-        width: W,
-        height: H,
-        isEventCapture: 1,
-        paddingLength: 8,
-      }),
-    ],
+    containerTotalNum: 2,
+    textObject: [documentContainer, eventsContainer],
   })
 }
 
@@ -714,8 +945,8 @@ export async function updateEventsDisplay(): Promise<void> {
 
   await b.textContainerUpgrade(
     new TextContainerUpgrade({
-      containerID: 1,
-      containerName: 'events',
+      containerID: 2,
+      containerName: 'main',
       content: eventsContent(),
     }),
   )

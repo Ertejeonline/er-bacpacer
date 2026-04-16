@@ -1,7 +1,7 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
 import { state, setBridge, SCREENS } from './state'
-import { showMenu } from './renderer'
+import { showMenu, updateTimeDisplay } from './renderer'
 import { onEvenHubEvent, navigateTo } from './events'
 
 export async function initApp(appBridge: EvenAppBridge): Promise<void> {
@@ -13,6 +13,11 @@ export async function initApp(appBridge: EvenAppBridge): Promise<void> {
 
   appendEventLog('Demo: initialised')
   await showMenu()
+
+  // Start time updates every minute
+  setInterval(() => {
+    void updateTimeDisplay()
+  }, 60000)
 }
 
 export async function nextScreen(): Promise<void> {
