@@ -17,6 +17,7 @@ async function boot() {
   const cancelResetBtn = document.getElementById('cancelResetBtn') as HTMLButtonElement | null
   const drinksLogBtn = document.getElementById('drinksLogBtn') as HTMLButtonElement | null
   const bacSettingsBtn = document.getElementById('bacSettingsBtn') as HTMLButtonElement | null
+  const presetsBtn = document.getElementById('presetsBtn') as HTMLButtonElement | null
   const drinksLogModal = document.getElementById('drinksLogModal')
   const drinksLogList = document.getElementById('drinksLogList')
   const closeDrinksLogBtn = document.getElementById('closeDrinksLogBtn') as HTMLButtonElement | null
@@ -43,6 +44,16 @@ async function boot() {
   const bacFoodProfileInput = document.getElementById('bacFoodProfileInput') as HTMLSelectElement | null
   const saveBacSettingsBtn = document.getElementById('saveBacSettingsBtn') as HTMLButtonElement | null
   const cancelBacSettingsBtn = document.getElementById('cancelBacSettingsBtn') as HTMLButtonElement | null
+  const presetsModal = document.getElementById('presetsModal')
+  const presetsList = document.getElementById('presetsList')
+  const addPresetBtn = document.getElementById('addPresetBtn') as HTMLButtonElement | null
+  const closePresetsBtn = document.getElementById('closePresetsBtn') as HTMLButtonElement | null
+  const presetEditor = document.getElementById('presetEditor')
+  const presetEditorTitle = document.getElementById('presetEditorTitle')
+  const presetMlInput = document.getElementById('presetMlInput') as HTMLInputElement | null
+  const presetPercentInput = document.getElementById('presetPercentInput') as HTMLInputElement | null
+  const savePresetBtn = document.getElementById('savePresetBtn') as HTMLButtonElement | null
+  const cancelPresetBtn = document.getElementById('cancelPresetBtn') as HTMLButtonElement | null
 
   document.title = `${app.name} – Even G2`
   updateStatus(app.initialStatus ?? `${app.name} app ready`)
@@ -59,6 +70,7 @@ async function boot() {
   const actions = await app.createActions(updateStatus)
   let pendingDeleteTimestampMs: number | null = null
   let editingDrinkTimestampMs: number | null = null
+  let editingPresetId: string | null = null
 
   const formatTimeInputValue = (timestampMs: number) => {
     const date = new Date(timestampMs)
@@ -183,6 +195,40 @@ async function boot() {
 
   const closeBacSettingsModal = () => {
     bacSettingsModal?.classList.add('hidden')
+  }
+
+  const closePresetEditor = () => {
+    editingPresetId = null
+    presetEditor?.classList.add('hidden')
+    if (presetMlInput) presetMlInput.value = ''
+    if (presetPercentInput) presetPercentInput.value = ''
+    if (presetEditorTitle) presetEditorTitle.textContent = 'Add preset'
+  }
+
+  const openPresetEditor = (presetId?: string) => {
+    if (!actions.getDrinkPresets || !presetEditor || !presetMlInput || !presetPercentInput) return
+
+    if (presetId) {
+      const preset = actions.getDrinkPresets().find((candidate) => candidate.id === presetId)
+      if (!preset) return
+
+      editingPresetId = preset.id
+      presetMlInput.value = String(preset.ml)
+      presetPercentInput.value = preset.percent.toFixed(1)
+      if (presetEditorTitle) presetEditorTitle.textContent = 'Edit preset'
+    } else {
+      editingPresetId = null
+      presetMlInput.value = ''
+      presetPercentInput.value = ''
+      if (presetEditorTitle) presetEditorTitle.textContent = 'Add preset'
+    }
+
+    presetEditor.classList.remove('hidden')
+  }
+
+  const closePresetsModal = () => {
+    closePresetEditor()
+    presetsModal?.classList.add('hidden')
   }
 
   const openBacSettingsModal = () => {
@@ -311,6 +357,72 @@ async function boot() {
     }
   }
 
+  const renderPresets = () => {
+    if (!presetsList || !actions.getDrinkPresets) return
+
+    const presets = actions.getDrinkPresets()
+    presetsList.innerHTML = ''
+
+    for (const preset of presets) {
+      const row = document.createElement('div')
+      row.className = 'preset-row'
+
+      const copy = document.createElement('div')
+      copy.className = 'preset-copy'
+
+      const name = document.createElement('p')
+      name.className = 'preset-name'
+      name.textContent = `${preset.ml} ml ${preset.percent.toFixed(1)}%`
+
+      const meta = document.createElement('p')
+      meta.className = 'preset-meta'
+      meta.textContent = `${preset.ml} ml · ${preset.percent.toFixed(1)}% alcohol`
+
+      copy.appendChild(name)
+      copy.appendChild(meta)
+
+      const actionsRow = document.createElement('div')
+      actionsRow.className = 'preset-row-actions'
+
+      const editBtn = document.createElement('button')
+      editBtn.type = 'button'
+      editBtn.textContent = 'Edit'
+      editBtn.addEventListener('click', () => {
+        openPresetEditor(preset.id)
+      })
+
+      const deleteBtn = document.createElement('button')
+      deleteBtn.type = 'button'
+      deleteBtn.className = 'danger-btn'
+      deleteBtn.textContent = 'Delete'
+      deleteBtn.addEventListener('click', () => {
+        const removed = actions.removeDrinkPreset?.(preset.id)
+        if (!removed) {
+          updateStatus('Preset delete failed')
+          return
+        }
+
+        if (editingPresetId === preset.id) {
+          closePresetEditor()
+        }
+        renderPresets()
+      })
+
+      actionsRow.appendChild(editBtn)
+      actionsRow.appendChild(deleteBtn)
+      row.appendChild(copy)
+      row.appendChild(actionsRow)
+      presetsList.appendChild(row)
+    }
+  }
+
+  const openPresetsModal = () => {
+    if (!presetsModal || !actions.getDrinkPresets) return
+    closePresetEditor()
+    renderPresets()
+    presetsModal.classList.remove('hidden')
+  }
+
   const openResetModal = () => {
     if (!confirmResetModal) return
     confirmResetModal.classList.remove('hidden')
@@ -370,6 +482,11 @@ async function boot() {
   if (actions.getBacSettings && bacSettingsBtn) {
     bacSettingsBtn.style.display = ''
     bacSettingsBtn.addEventListener('click', openBacSettingsModal)
+  }
+
+  if (actions.getDrinkPresets && presetsBtn) {
+    presetsBtn.style.display = ''
+    presetsBtn.addEventListener('click', openPresetsModal)
   }
 
   closeDrinksLogBtn?.addEventListener('click', closeDrinksLog)
@@ -535,6 +652,44 @@ async function boot() {
   bacSettingsModal?.addEventListener('click', (event) => {
     if (event.target === bacSettingsModal) {
       closeBacSettingsModal()
+    }
+  })
+
+  addPresetBtn?.addEventListener('click', () => {
+    openPresetEditor()
+  })
+  cancelPresetBtn?.addEventListener('click', closePresetEditor)
+  savePresetBtn?.addEventListener('click', () => {
+    if (!presetMlInput || !presetPercentInput) return
+
+    const ml = Number(presetMlInput.value)
+    const percent = Number(presetPercentInput.value)
+    if (!Number.isFinite(ml) || !Number.isFinite(percent)) {
+      updateStatus('Enter valid preset amount and alcohol percentage')
+      return
+    }
+
+    if (editingPresetId) {
+      const updated = actions.updateDrinkPreset?.(editingPresetId, { ml, percent })
+      if (!updated) {
+        updateStatus('Preset update failed')
+        return
+      }
+    } else {
+      const created = actions.addDrinkPreset?.({ ml, percent })
+      if (!created) {
+        updateStatus('Preset add failed')
+        return
+      }
+    }
+
+    closePresetEditor()
+    renderPresets()
+  })
+  closePresetsBtn?.addEventListener('click', closePresetsModal)
+  presetsModal?.addEventListener('click', (event) => {
+    if (event.target === presetsModal) {
+      closePresetsModal()
     }
   })
 

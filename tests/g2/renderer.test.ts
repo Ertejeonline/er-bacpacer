@@ -57,6 +57,7 @@ describe('g2/renderer', () => {
     expect(menuItemFromIndex(0)).toBe('standBy')
     expect(menuItemFromIndex(1)).toBe('adddrink')
     expect(menuItemFromIndex(2)).toBe('setupdrink')
+    expect(menuItemFromIndex(3)).toBe('presets')
     expect(menuItemFromIndex(99)).toBeUndefined()
 
     expect(addDrinkSubmenuItemFromIndex(0)).toBe('Add drink')
@@ -132,6 +133,53 @@ describe('g2/renderer', () => {
     expect(serializedPayload).not.toContain('Elim beta:')
     expect(serializedPayload).not.toContain('Absorption:')
     expect(serializedPayload).not.toContain('Body water r:')
+  })
+
+  it('renders the presets screen as a clickable list with load preset title', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+
+    state.menuVisible = false
+    state.currentMenuItem = 'presets'
+    state.drinkPresets = [
+      { id: 'wine', ml: 150, percent: 13.5 },
+      { id: 'beer', ml: 330, percent: 5 },
+    ]
+
+    await updateMenuDisplay()
+
+    const startupPayload = bridge.createStartUpPageContainer.mock.calls[0]?.[0] as {
+      textObject?: Array<{ containerID?: number; content?: string }>
+      listObject?: Array<{ itemContainer?: { itemName?: string[] } }>
+    }
+
+    const topLeft = startupPayload.textObject?.find((payload) => payload.containerID === 1)
+    expect(topLeft?.content).toBe('Load preset')
+    expect(startupPayload.listObject?.[0]?.itemContainer?.itemName).toEqual([
+      '150 ml  13.5%',
+      '330 ml  5%',
+    ])
+  })
+
+  it('shows a placeholder item when no presets are available', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+
+    state.menuVisible = false
+    state.currentMenuItem = 'presets'
+    state.drinkPresets = []
+
+    await updateMenuDisplay()
+
+    const startupPayload = bridge.createStartUpPageContainer.mock.calls[0]?.[0] as {
+      listObject?: Array<{ itemContainer?: { itemName?: string[] } }>
+      textObject?: Array<{ containerID?: number; content?: string }>
+    }
+
+    expect(startupPayload.listObject?.[0]?.itemContainer?.itemName).toEqual(['No presets saved'])
+
+    const rightPanel = startupPayload.textObject?.find((payload) => payload.containerID === 4)
+    expect(rightPanel?.content).toBe('Add presets from phone')
   })
 
   it('toggles standby hud only in standby detail context', () => {

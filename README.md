@@ -10,8 +10,10 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - `Stand by`: minimal standby detail view
   - `Log a drink`: open drink logging submenu
   - `Summary`: show BAC summary metrics
+  - `Presets`: open a clickable list of presets synced from the phone
 - Drink logging flow:
   - adjust default volume (`ml`) and strength (`%`)
+  - load a saved preset on glasses to replace the current default volume and strength
   - confirm `Add drink` to store an entry
   - each entry has start and computed end time
 - BAC estimate model:
@@ -25,6 +27,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - reset all drinks
   - open/edit/delete drink entries
   - tune BAC settings
+  - manage saved presets for common `ml` + `%` combinations
 
 ## Tech Stack
 
@@ -77,7 +80,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 ## Notes
 
 - Persisted state key: `bacpacer.persisted.v1`
-- Drink history is bounded to recent entries and persisted via bridge storage (with browser localStorage fallback).
+- Drink history and saved presets are persisted via bridge storage (with browser localStorage fallback).
 
 ## Stability & Connection Resilience
 

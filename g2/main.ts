@@ -3,11 +3,14 @@ import type { SetStatus, AppActions } from '../_shared/app-types'
 import { appendEventLog } from '../_shared/log'
 import { initApp, updateDisplay } from './app'
 import {
+  addDrinkPreset,
   clearDrinkEntries,
   getBacEstimateAt,
   getBacEstimateWithSettings,
   getBacSettings,
+  getDrinkPresets,
   formatDrinkEntryTime,
+  removeDrinkPreset,
   removeDrinkEntry,
   savePersistedState,
   setBacSettings,
@@ -18,6 +21,7 @@ import {
   setDrinkPercent,
   state,
   storeCurrentDrink,
+  updateDrinkPreset,
   updateDrinkEntry,
 } from './state'
 import {
@@ -296,7 +300,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               return
             }
 
-            if (!state.menuVisible) return
+            if (!state.menuVisible && state.currentMenuItem !== 'presets') return
             const eventType = event.listEvent.eventType ?? 0
             if (eventType === OsEventTypeList.CLICK_EVENT) {
               const index = event.listEvent.currentSelectItemIndex ?? 0
@@ -328,6 +332,22 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
                   appendEventLog(`Add drink submenu: ${submenuItem} (ml=${state.drinkMl}, abv=${state.drinkPercent}%)`)
                   refreshDisplayIfActive()
                 }
+              } else if (!state.menuVisible && state.currentMenuItem === 'presets') {
+                const preset = state.drinkPresets[index]
+                if (!preset) {
+                  appendEventLog(`Preset load ignored idx=${index} (no preset)`)
+                  return
+                }
+
+                setDrinkMl(preset.ml)
+                setDrinkPercent(preset.percent)
+                state.currentMenuItem = 'adddrink'
+                state.menuVisible = true
+                setFocusedMenuItem('adddrink')
+                setAddDrinkSubmenuVisible(true)
+                appendEventLog(`Preset loaded on glasses: id=${preset.id} ml=${preset.ml} abv=${preset.percent}`)
+                logMenuContext('open-add-submenu-after-preset', `preset=${preset.id}`)
+                refreshDisplayIfActive()
               } else {
                 const selected = menuItemFromIndex(index)
                 appendEventLog(`MenuFlow: main-select resolved=${selected ?? 'undefined'} idx=${index} name="${itemName}"`)
@@ -512,6 +532,33 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     },
 
     getDrinkEntries: () => [...state.drinkEntries],
+
+    getDrinkPresets: () => getDrinkPresets(),
+
+    addDrinkPreset: (preset) => {
+      const created = addDrinkPreset(preset)
+      setStatus('Preset added')
+      appendEventLog(`Preset added from phone UI: id=${created.id} ml=${created.ml} abv=${created.percent}`)
+      return created
+    },
+
+    updateDrinkPreset: (id, preset) => {
+      const updated = updateDrinkPreset(id, preset)
+      if (!updated) return false
+
+      setStatus('Preset updated')
+      appendEventLog(`Preset updated from phone UI: id=${id} ml=${preset.ml} abv=${preset.percent}`)
+      return true
+    },
+
+    removeDrinkPreset: (id) => {
+      const removed = removeDrinkPreset(id)
+      if (!removed) return false
+
+      setStatus('Preset deleted')
+      appendEventLog(`Preset deleted from phone UI: id=${id}`)
+      return true
+    },
 
     getBacSettings: () => getBacSettings(),
 

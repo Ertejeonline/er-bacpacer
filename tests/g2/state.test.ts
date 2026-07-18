@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getBackgroundStateSnapshot, restoreBackgroundState } from '../../_shared/background-state'
 import {
+  addDrinkPreset,
   clearDrinkEntries,
   estimateDrinkDurationMs,
   formatBacGdl,
@@ -8,8 +9,10 @@ import {
   getBacEstimateAt,
   getBacSettings,
   getDrinkEntryEndTimestampMs,
+  getDrinkPresets,
   loadPersistedState,
   registerBackgroundState,
+  removeDrinkPreset,
   removeDrinkEntry,
   setAddDrinkSubmenuVisible,
   setBacSettings,
@@ -22,6 +25,7 @@ import {
   setBridge,
   state,
   storeCurrentDrink,
+  updateDrinkPreset,
   updateDrinkEntry,
 } from '../../g2/state'
 
@@ -38,6 +42,7 @@ function resetState(): void {
   state.drinkMl = 175
   state.drinkPercent = 13.5
   state.drinkEntries = []
+  state.drinkPresets = []
   state.bacSettings = { ...DEFAULT_BAC_SETTINGS }
   setBridge({
     getLocalStorage: async () => null,
@@ -198,6 +203,21 @@ describe('g2/state', () => {
     expect(state.drinkEntries).toHaveLength(0)
   })
 
+  it('adds, updates, lists, and removes drink presets', () => {
+    const created = addDrinkPreset({ ml: 150, percent: 13.5 })
+
+    expect(created.id).toBeTruthy()
+    expect(getDrinkPresets()).toEqual([{ id: created.id, ml: 150, percent: 13.5 }])
+
+    const updated = updateDrinkPreset(created.id, { ml: 1750, percent: 120 })
+    expect(updated).toBe(true)
+    expect(getDrinkPresets()).toEqual([{ id: created.id, ml: 1750, percent: 100 }])
+
+    expect(removeDrinkPreset(created.id)).toBe(true)
+    expect(removeDrinkPreset(created.id)).toBe(false)
+    expect(getDrinkPresets()).toEqual([])
+  })
+
   it('clamps bpm, ml and percent values', () => {
     setBpm(10)
     setDrinkMl(-50)
@@ -287,6 +307,10 @@ describe('g2/state', () => {
         { ml: 9999, percent: 999, timestampMs: oldEntryTs, endTimestampMs: oldEntryTs + 1000 },
         { ml: 333, percent: 11.5, timestampMs: now - 1000, endTimestampMs: now + 1000 },
       ],
+      drinkPresets: [
+        { id: 'wine', ml: 150, percent: 13.5 },
+        { ml: 9999, percent: -5 },
+      ],
       bacSettings: {
         weightKg: 999,
         sexAtBirth: 'male',
@@ -310,6 +334,10 @@ describe('g2/state', () => {
     expect(state.drinkPercent).toBe(0)
     expect(state.drinkEntries).toHaveLength(1)
     expect(state.drinkEntries[0]?.ml).toBe(333)
+    expect(state.drinkPresets).toHaveLength(2)
+    expect(state.drinkPresets[0]).toEqual({ id: 'wine', ml: 150, percent: 13.5 })
+    expect(state.drinkPresets[1]?.ml).toBe(2000)
+    expect(state.drinkPresets[1]?.percent).toBe(0)
     expect(state.bacSettings.weightKg).toBe(250)
     expect(state.bacSettings.dateOfBirth).toBe('2010-01-01')
     expect(state.bacSettings.ageYears).toBe(18)
@@ -379,13 +407,18 @@ describe('g2/state', () => {
     state.drinkEntries = [
       { ml: 250, percent: 5, timestampMs: Date.now() - 1000, endTimestampMs: Date.now() + 1000 },
     ]
+    state.drinkPresets = [
+      { id: 'preset-1', ml: 150, percent: 13.5 },
+    ]
 
     const snapshotRaw = getBackgroundStateSnapshot()
     state.drinkEntries = []
+    state.drinkPresets = []
 
     restoreBackgroundState(snapshotRaw)
 
     expect(state.drinkEntries).toHaveLength(1)
     expect(state.drinkEntries[0]?.ml).toBe(250)
+    expect(state.drinkPresets).toEqual([{ id: 'preset-1', ml: 150, percent: 13.5 }])
   })
 })

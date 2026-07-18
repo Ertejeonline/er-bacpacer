@@ -14,6 +14,7 @@ const MENU_ITEMS: { id: MenuItem; label: string }[] = [
   { id: 'standBy', label: 'Stand by' },
   { id: 'adddrink', label: 'Log a drink' },
   { id: 'setupdrink', label: 'Summary' },
+  { id: 'presets', label: 'Presets' },
 ]
 
 const ADD_DRINK_MENU_ITEMS = [
@@ -25,7 +26,7 @@ const ADD_DRINK_MENU_ITEMS = [
 ]
 
 let containersCreated = false
-type LayoutMode = 'main-menu' | 'adddrink-menu' | 'detail' | 'standby-detail'
+type LayoutMode = 'main-menu' | 'adddrink-menu' | 'presets-menu' | 'detail' | 'standby-detail'
 let currentLayoutMode: LayoutMode | null = null
 let renderQueue: Promise<void> = Promise.resolve()
 let standbyHudHidden = false
@@ -118,7 +119,7 @@ function getTopLeftContent(): string {
 
   return state.menuVisible
     ? (state.addDrinkSubmenuVisible ? 'Log a drink' : 'Menu')
-    : (state.currentMenuItem === 'standBy' ? '' : `${getMenuItemLabel(state.currentMenuItem)}`)
+    : getDetailTitle(state.currentMenuItem)
 }
 
 function getTopRightContent(): string {
@@ -158,20 +159,35 @@ function getMainRightContent(estimate: BacEstimate = getBacEstimateAt()): string
   }
 
   const inAddDrinkContext = state.addDrinkSubmenuVisible || (!state.menuVisible && state.currentMenuItem === 'adddrink')
-  if (!inAddDrinkContext) return ' '
+  if (inAddDrinkContext) {
+    const latest = `${state.drinkMl} ml    ${state.drinkPercent} %`
+    const historyLines = state.drinkEntries.slice(0, MAX_RIGHT_HISTORY_LINES).map((entry) => {
+      const start = formatDrinkEntryTime(entry.timestampMs)
+      const end = formatDrinkEntryTime(getDrinkEntryEndTimestampMs(entry))
+      return `${start}-${end}  ${entry.ml} ml  ${entry.percent}%`
+    })
 
-  const latest = `${state.drinkMl} ml    ${state.drinkPercent} %`
-  const historyLines = state.drinkEntries.slice(0, MAX_RIGHT_HISTORY_LINES).map((entry) => {
-    const start = formatDrinkEntryTime(entry.timestampMs)
-    const end = formatDrinkEntryTime(getDrinkEntryEndTimestampMs(entry))
-    return `${start}-${end}  ${entry.ml} ml  ${entry.percent}%`
-  })
+    const history = historyLines.length > 0
+      ? historyLines.join('\n')
+      : 'No drinks stored yet'
 
-  const history = historyLines.length > 0
-    ? historyLines.join('\n')
-    : 'No drinks stored yet'
+    return trimForRebuild(`${latest}\n\nDrinks:\n${history}`)
+  }
 
-  return trimForRebuild(`${latest}\n\nDrinks:\n${history}`)
+  const inPresetsContext = !state.menuVisible && state.currentMenuItem === 'presets'
+  if (inPresetsContext) {
+    if (state.drinkPresets.length === 0) {
+      return 'Add presets from phone'
+    }
+
+    return trimForRebuild([
+      `Current: ${state.drinkMl} ml  ${state.drinkPercent}%`,
+      '',
+      'Tap a preset to load it',
+    ].join('\n'))
+  }
+
+  return ' '
 }
 
 function getBottomRightContent(estimate: BacEstimate = getBacEstimateAt()): string {
@@ -338,7 +354,7 @@ async function updateMenuDisplayInternal(): Promise<void> {
   }
 
   const targetLayoutMode: LayoutMode = !state.menuVisible
-    ? (state.currentMenuItem === 'standBy' ? 'standby-detail' : 'detail')
+    ? (state.currentMenuItem === 'standBy' ? 'standby-detail' : (state.currentMenuItem === 'presets' ? 'presets-menu' : 'detail'))
     : (state.addDrinkSubmenuVisible ? 'adddrink-menu' : 'main-menu')
 
   const needsFullLayoutRender = !containersCreated || targetLayoutMode !== currentLayoutMode
@@ -350,6 +366,8 @@ async function updateMenuDisplayInternal(): Promise<void> {
     let rendered = false
     if (targetLayoutMode === 'standby-detail') {
       rendered = await showStandbyDetailLayout()
+    } else if (targetLayoutMode === 'presets-menu') {
+      rendered = await showPresetsMenuListLayout()
     } else if (targetLayoutMode === 'detail') {
       const body = getScreenBody(state.currentMenuItem)
       rendered = await showDetailLayout(body)
@@ -421,6 +439,18 @@ async function showAddDrinkMenuListLayout(): Promise<boolean> {
   return showMenuListLayout(ADD_DRINK_MENU_ITEMS, 'AddDrinkMenu')
 }
 
+function getPresetMenuItems(): string[] {
+  if (state.drinkPresets.length === 0) {
+    return ['No presets saved']
+  }
+
+  return state.drinkPresets.map((preset) => `${preset.ml} ml  ${preset.percent}%`)
+}
+
+async function showPresetsMenuListLayout(): Promise<boolean> {
+  return showMenuListLayout(getPresetMenuItems(), 'PresetMenu')
+}
+
 async function showStandbyDetailLayout(): Promise<boolean> {
   const textContainers = [
     ...buildStaticTextContainers(),
@@ -477,6 +507,12 @@ function getMenuItemLabel(item: MenuItem): string {
   return found?.label ?? 'Menu'
 }
 
+function getDetailTitle(item: MenuItem): string {
+  if (item === 'standBy') return ''
+  if (item === 'presets') return 'Load preset'
+  return getMenuItemLabel(item)
+}
+
 function getScreenBody(item: MenuItem): string {
   switch (item) {
     case 'standBy':
@@ -495,6 +531,10 @@ function getScreenBody(item: MenuItem): string {
         `Age: ${Math.round(settings.ageYears)}`,
       ].join('\n')
     }
+    case 'presets':
+      return state.drinkPresets.length > 0
+        ? 'Tap a preset to load it'
+        : 'No presets saved'
   }
 }
 

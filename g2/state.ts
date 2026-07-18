@@ -2,13 +2,19 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { setBackgroundState, onBackgroundRestore } from '../_shared/background-state'
 
-export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink'
+export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink' | 'presets'
 
 export type DrinkEntry = {
   ml: number
   percent: number
   timestampMs: number
   endTimestampMs?: number
+}
+
+export type DrinkPreset = {
+  id: string
+  ml: number
+  percent: number
 }
 
 export type BacFoodProfile = 'empty' | 'light' | 'heavy'
@@ -66,6 +72,7 @@ type PersistedState = {
   drinkMl: number
   drinkPercent: number
   drinkEntries: DrinkEntry[]
+  drinkPresets: DrinkPreset[]
   bacSettings: BacUserSettings
 }
 
@@ -108,6 +115,7 @@ const DEFAULT_PERSISTED_STATE: PersistedState = {
   drinkMl: 175,
   drinkPercent: 13.5,
   drinkEntries: [],
+  drinkPresets: [],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
 }
 
@@ -122,6 +130,7 @@ export const state = {
   drinkMl: DEFAULT_PERSISTED_STATE.drinkMl,
   drinkPercent: DEFAULT_PERSISTED_STATE.drinkPercent,
   drinkEntries: [...DEFAULT_PERSISTED_STATE.drinkEntries],
+  drinkPresets: [...DEFAULT_PERSISTED_STATE.drinkPresets],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
 }
 
@@ -145,6 +154,16 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function getPercentFraction(percent: number): number {
   return percent > 1 ? percent / 100 : percent
+}
+
+function normalizeDrinkPreset(value: Partial<DrinkPreset> | undefined, fallbackId?: string): DrinkPreset {
+  return {
+    id: typeof value?.id === 'string' && value.id.trim()
+      ? value.id.trim()
+      : (fallbackId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+    ml: clampNumber(typeof value?.ml === 'number' ? value.ml : state.drinkMl, 0, 2000),
+    percent: clampNumber(typeof value?.percent === 'number' ? value.percent : state.drinkPercent, 0, 100),
+  }
 }
 
 export function estimateDrinkDurationMs(ml: number, percent: number): number {
@@ -289,6 +308,7 @@ function toPersistedState(): PersistedState {
       timestampMs: entry.timestampMs,
       endTimestampMs: getDrinkEntryEndTimestampMs(entry),
     })),
+    drinkPresets: state.drinkPresets.slice(0, 100).map((preset) => normalizeDrinkPreset(preset, preset.id)),
     bacSettings: normalizeBacSettings(state.bacSettings),
   }
 }
@@ -359,6 +379,13 @@ function applyHydratedState(raw: string): void {
       if (hadPrunedEntries) {
         savePersistedState()
       }
+    }
+
+    if (Array.isArray(parsed.drinkPresets)) {
+      state.drinkPresets = parsed.drinkPresets
+        .filter((preset) => typeof preset === 'object' && preset !== null)
+        .map((preset, index) => normalizeDrinkPreset(preset as Partial<DrinkPreset>, `preset-${index}`))
+        .slice(0, 100)
     }
 
     if (parsed.bacSettings && typeof parsed.bacSettings === 'object') {
@@ -654,6 +681,41 @@ export function storeCurrentDrink(): DrinkEntry {
 export function clearDrinkEntries(): void {
   state.drinkEntries = []
   savePersistedState()
+}
+
+export function getDrinkPresets(): DrinkPreset[] {
+  return state.drinkPresets.map((preset) => ({ ...preset }))
+}
+
+export function addDrinkPreset(preset: Omit<DrinkPreset, 'id'>): DrinkPreset {
+  const nextPreset = normalizeDrinkPreset(preset)
+  state.drinkPresets = [nextPreset, ...state.drinkPresets].slice(0, 100)
+  savePersistedState()
+  return { ...nextPreset }
+}
+
+export function updateDrinkPreset(id: string, preset: Omit<DrinkPreset, 'id'>): boolean {
+  const index = state.drinkPresets.findIndex((candidate) => candidate.id === id)
+  if (index < 0) {
+    return false
+  }
+
+  const nextPresets = [...state.drinkPresets]
+  nextPresets[index] = normalizeDrinkPreset({ id, ...preset }, id)
+  state.drinkPresets = nextPresets
+  savePersistedState()
+  return true
+}
+
+export function removeDrinkPreset(id: string): boolean {
+  const nextPresets = state.drinkPresets.filter((preset) => preset.id !== id)
+  if (nextPresets.length === state.drinkPresets.length) {
+    return false
+  }
+
+  state.drinkPresets = nextPresets
+  savePersistedState()
+  return true
 }
 
 export function removeDrinkEntry(timestampMs: number): boolean {

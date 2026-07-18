@@ -7,6 +7,12 @@ export type DrinkEntry = {
   endTimestampMs?: number
 }
 
+export type DrinkPreset = {
+  id: string
+  ml: number
+  percent: number
+}
+
 export type BacFoodProfile = 'empty' | 'light' | 'heavy'
 
 export type BacSexAtBirth = 'male' | 'female'
@@ -46,6 +52,10 @@ export type AppActions = {
   action: () => Promise<void>
   reset?: () => Promise<void>
   getDrinkEntries?: () => DrinkEntry[]
+  getDrinkPresets?: () => DrinkPreset[]
+  addDrinkPreset?: (preset: Omit<DrinkPreset, 'id'>) => DrinkPreset
+  updateDrinkPreset?: (id: string, preset: Omit<DrinkPreset, 'id'>) => boolean
+  removeDrinkPreset?: (id: string) => boolean
   removeDrinkEntry?: (timestampMs: number) => void
   updateDrinkEntry?: (originalTimestampMs: number, nextEntry: DrinkEntry) => boolean
   getBacSettings?: () => BacUserSettings

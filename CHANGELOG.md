@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-07-18
+
+### Fixed
+- Glasses-side preset taps now correctly load the selected preset and open the `Log a drink` submenu
+
+## [1.5.0] - 2026-07-18
+
+### Added
+- Glasses-side `Presets` main menu option
+- `Load preset` screen on glasses with clickable preset list synced from phone-side saved presets
+
+## [1.4.0] - 2026-07-18
+
+### Added
+- Phone-side preset management for common drink sizes and alcohol percentages
+- Presets modal with add, edit, and delete support
+
 ## [1.3.0] - 2026-07-18
 
 ### Added

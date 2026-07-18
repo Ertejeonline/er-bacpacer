@@ -211,6 +211,39 @@ button:disabled {
   margin-top: 12px;
 }
 
+.modal-actions--stack-start {
+  justify-content: flex-start;
+}
+
+.modal-actions--stack-start button {
+  width: auto;
+}
+
+.preset-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+
+.preset-add-btn-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 16px;
+  line-height: 1;
+}
+
 .modal-actions button {
   margin: 0;
 }
@@ -318,6 +351,67 @@ select.field-input {
   font-weight: 500;
   flex: 1;
   text-align: right;
+}
+
+.presets-list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.presets-list:empty::after {
+  content: 'No presets saved yet.';
+  display: block;
+  padding: 16px;
+  text-align: center;
+  color: var(--color-text-dim);
+  font-size: 14px;
+}
+
+.preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.preset-row:last-child {
+  border-bottom: none;
+}
+
+.preset-copy {
+  min-width: 0;
+}
+
+.preset-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.preset-meta {
+  margin: 4px 0 0;
+  color: var(--color-text-dim);
+  font-size: 14px;
+}
+
+.preset-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preset-row-actions button {
+  width: auto;
+  padding: 8px 12px;
+}
+
+.preset-editor {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
 }
 
 .drink-log-delete-btn {
