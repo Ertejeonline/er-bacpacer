@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-18
+
+### Added
+- Background state persistence: app state (drink log, BAC settings, active screen) now survives the phone's background/headless WebView migration instead of resetting
+- Automatic reconnection: the app now retries the bridge connection after abnormal exits, device disconnects, or repeated render failures
+- Device status monitoring via `onDeviceStatusChanged` to detect BLE disconnects that the event stream misses
+- `pageshow` and `visibilitychange` listeners to resynchronize display state when the WebView becomes visible again
+
+### Changed
+- Bridge event handling and app initialization are now wrapped in error guards so a single malformed event or failed init no longer silently kills the connection
+- The display refresh timer now tolerates individual tick failures without stopping future refreshes
+
+### Fixed
+- Connection could get stuck marked "connected" after a failed initialization
+- Refresh timer would not resume after certain disconnect/reconnect sequences
+
 ## [1.2.8] - 2026-05-05
 
 ### Added

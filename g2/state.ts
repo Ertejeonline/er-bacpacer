@@ -1,5 +1,6 @@
 // Application state management
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
+import { setBackgroundState, onBackgroundRestore } from '../_shared/background-state'
 
 export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink'
 
@@ -691,4 +692,38 @@ export function updateDrinkEntry(originalTimestampMs: number, nextEntry: DrinkEn
 
 export function formatDrinkEntryTime(timestampMs: number): string {
   return formatHHMM(new Date(timestampMs))
+}
+
+export function registerBackgroundState(): void {
+  setBackgroundState('bacpacerState', () => ({
+    ...toPersistedState(),
+    menuVisible: state.menuVisible,
+    addDrinkSubmenuVisible: state.addDrinkSubmenuVisible,
+    currentMenuItem: state.currentMenuItem,
+    focusedMenuItem: state.focusedMenuItem,
+  }))
+
+  onBackgroundRestore('bacpacerState', (saved) => {
+    const s = saved as {
+      menuVisible?: boolean
+      addDrinkSubmenuVisible?: boolean
+      currentMenuItem?: MenuItem
+      focusedMenuItem?: MenuItem
+    } & Partial<PersistedState>
+
+    applyHydratedState(JSON.stringify(s))
+
+    if (typeof s.menuVisible === 'boolean') {
+      state.menuVisible = s.menuVisible
+    }
+    if (typeof s.addDrinkSubmenuVisible === 'boolean') {
+      state.addDrinkSubmenuVisible = s.addDrinkSubmenuVisible
+    }
+    if (s.currentMenuItem) {
+      state.currentMenuItem = s.currentMenuItem
+    }
+    if (s.focusedMenuItem) {
+      state.focusedMenuItem = s.focusedMenuItem
+    }
+  })
 }

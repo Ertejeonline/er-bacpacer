@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getBackgroundStateSnapshot, restoreBackgroundState } from '../../_shared/background-state'
 import {
   clearDrinkEntries,
   estimateDrinkDurationMs,
@@ -8,6 +9,7 @@ import {
   getBacSettings,
   getDrinkEntryEndTimestampMs,
   loadPersistedState,
+  registerBackgroundState,
   removeDrinkEntry,
   setAddDrinkSubmenuVisible,
   setBacSettings,
@@ -329,5 +331,61 @@ describe('g2/state', () => {
     expect(state.pacerRunning).toBe(true)
     setPacerRunning(false)
     expect(state.pacerRunning).toBe(false)
+  })
+
+  it('captures persisted state and UI flags in a background snapshot, and restores them', () => {
+    registerBackgroundState()
+
+    state.currentMenuItem = 'adddrink'
+    state.menuVisible = false
+    state.addDrinkSubmenuVisible = true
+    state.focusedMenuItem = 'adddrink'
+    setDrinkMl(300)
+    setDrinkPercent(20)
+
+    const snapshotRaw = getBackgroundStateSnapshot()
+    expect(snapshotRaw).toBeTruthy()
+
+    const snapshot = JSON.parse(snapshotRaw) as { bacpacerState?: Record<string, unknown> }
+    expect(snapshot.bacpacerState).toBeDefined()
+    expect(snapshot.bacpacerState?.currentMenuItem).toBe('adddrink')
+    expect(snapshot.bacpacerState?.menuVisible).toBe(false)
+    expect(snapshot.bacpacerState?.addDrinkSubmenuVisible).toBe(true)
+    expect(snapshot.bacpacerState?.focusedMenuItem).toBe('adddrink')
+    expect(snapshot.bacpacerState?.drinkMl).toBe(300)
+    expect(snapshot.bacpacerState?.drinkPercent).toBe(20)
+
+    // Simulate the headless WebView resetting to defaults before restore is applied.
+    state.currentMenuItem = 'standBy'
+    state.menuVisible = true
+    state.addDrinkSubmenuVisible = false
+    state.focusedMenuItem = 'standBy'
+    state.drinkMl = 175
+    state.drinkPercent = 13.5
+
+    restoreBackgroundState(snapshotRaw)
+
+    expect(state.currentMenuItem).toBe('adddrink')
+    expect(state.menuVisible).toBe(false)
+    expect(state.addDrinkSubmenuVisible).toBe(true)
+    expect(state.focusedMenuItem).toBe('adddrink')
+    expect(state.drinkMl).toBe(300)
+    expect(state.drinkPercent).toBe(20)
+  })
+
+  it('preserves drink entries across a background snapshot/restore round-trip', () => {
+    registerBackgroundState()
+
+    state.drinkEntries = [
+      { ml: 250, percent: 5, timestampMs: Date.now() - 1000, endTimestampMs: Date.now() + 1000 },
+    ]
+
+    const snapshotRaw = getBackgroundStateSnapshot()
+    state.drinkEntries = []
+
+    restoreBackgroundState(snapshotRaw)
+
+    expect(state.drinkEntries).toHaveLength(1)
+    expect(state.drinkEntries[0]?.ml).toBe(250)
   })
 })

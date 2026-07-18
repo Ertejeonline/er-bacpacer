@@ -1,4 +1,4 @@
-import { waitForEvenAppBridge, OsEventTypeList } from '@evenrealities/even_hub_sdk'
+import { waitForEvenAppBridge, OsEventTypeList, DeviceConnectType } from '@evenrealities/even_hub_sdk'
 import type { SetStatus, AppActions } from '../_shared/app-types'
 import { appendEventLog } from '../_shared/log'
 import { initApp, updateDisplay } from './app'
@@ -9,6 +9,7 @@ import {
   getBacSettings,
   formatDrinkEntryTime,
   removeDrinkEntry,
+  savePersistedState,
   setBacSettings,
   setMenuItem,
   setFocusedMenuItem,
@@ -24,6 +25,7 @@ import {
   isStandbyHudHidden,
   menuItemFromIndex,
   resetRendererSession,
+  setRenderFailureHandler,
   toggleStandbyHudVisibility,
   updateMenuDisplay,
   updateTopRightCountdownOnly,
@@ -46,7 +48,9 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let exitDialogPending = false
   let exitDialogRecoveryTimerId: number | null = null
   let unsubscribeEvenHubEvent: (() => void) | null = null
+  let unsubscribeDeviceStatus: (() => void) | null = null
   let refreshTimerId: number | null = null
+  let reconnectTimerId: number | null = null
   let lastStandbyHudToggleAtMs = 0
   let teardownRegistered = false
 
@@ -64,6 +68,23 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     }
   }
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimerId !== null) {
+      window.clearTimeout(reconnectTimerId)
+      reconnectTimerId = null
+    }
+  }
+
+  const scheduleReconnect = (delayMs: number) => {
+    clearReconnectTimer()
+    reconnectTimerId = window.setTimeout(() => {
+      reconnectTimerId = null
+      if (connected || connecting || !appInForeground) return
+      appendEventLog('Lifecycle: attempting automatic reconnect')
+      void attemptConnect()
+    }, delayMs)
+  }
+
   const startRefreshTimer = () => {
     if (!connected) return
     stopRefreshTimer()
@@ -76,16 +97,25 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       void updateMenuDisplay()
     }
 
+    const safeTick = () => {
+      try {
+        tick()
+      } catch (err) {
+        console.warn('[bacpacer] refresh tick failed', err)
+        appendEventLog('Lifecycle: refresh tick error (recovered)')
+      }
+    }
+
     const scheduleIn = (delayMs: number) => {
       refreshTimerId = window.setTimeout(() => {
         refreshTimerId = null
-        tick()
+        safeTick()
         scheduleIn(refreshIntervalMs)
       }, delayMs)
     }
 
     // Refresh immediately, then keep dynamic standby HUD content current.
-    tick()
+    safeTick()
     scheduleIn(refreshIntervalMs)
   }
 
@@ -170,6 +200,18 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       }
     }
 
+    if (unsubscribeDeviceStatus) {
+      try {
+        unsubscribeDeviceStatus()
+      } catch (err) {
+        console.warn('[bacpacer] cleanup device status listener failed', err)
+      } finally {
+        unsubscribeDeviceStatus = null
+      }
+    }
+
+    setRenderFailureHandler(null)
+
     stopRefreshTimer()
     clearExitDialogRecoveryTimer()
   }
@@ -179,39 +221,64 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     teardownRegistered = true
 
     const onTeardown = () => {
+      clearReconnectTimer()
       cleanupBridgeListeners()
     }
 
     window.addEventListener('beforeunload', onTeardown)
     window.addEventListener('pagehide', onTeardown)
+
+    window.addEventListener('pageshow', () => {
+      if (!connected) return
+      appInForeground = true
+      appendEventLog('Lifecycle: pageshow')
+      startRefreshTimer()
+      refreshDisplayIfActive()
+    })
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!connected) return
+        appInForeground = true
+        appendEventLog('Lifecycle: visibilitychange visible')
+        startRefreshTimer()
+        refreshDisplayIfActive()
+      } else {
+        appendEventLog('Lifecycle: visibilitychange hidden')
+        appInForeground = false
+        stopRefreshTimer()
+        savePersistedState()
+      }
+    })
   }
 
-  return {
-    connect: async () => {
-      if (connecting) {
-        setStatus('Connection already in progress...')
-        return
-      }
-      if (connected) {
-        setStatus('Already connected')
-        return
-      }
+  const attemptConnect = async (): Promise<void> => {
+    if (connecting) {
+      setStatus('Connection already in progress...')
+      return
+    }
+    if (connected) {
+      setStatus('Already connected')
+      return
+    }
 
-      connecting = true
+    connecting = true
+    clearReconnectTimer()
 
-      setStatus('Connecting to Even bridge...')
-      appendEventLog(`Bacpacer v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`)
+    setStatus('Connecting to Even bridge...')
+    appendEventLog(`Bacpacer v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`)
 
-      try {
-        const bridge = await withTimeout(waitForEvenAppBridge(), 6000)
+    try {
+      const bridge = await withTimeout(waitForEvenAppBridge(), 6000)
 
-        cleanupBridgeListeners()
-        registerTeardown()
+      cleanupBridgeListeners()
+      registerTeardown()
 
-        // Use native list menu events for robust selection and highlight.
-        unsubscribeEvenHubEvent = bridge.onEvenHubEvent((event) => {
+      // Use native list menu events for robust selection and highlight.
+      unsubscribeEvenHubEvent = bridge.onEvenHubEvent((event) => {
+        try {
 
-          if (event.listEvent) {
+        if (event.listEvent) {
             inferForegroundFromInput()
             if (exitDialogPending) {
               appendEventLog('Lifecycle: exit dialog dismissed by user input')
@@ -330,7 +397,8 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               cleanupBridgeListeners()
               resetRendererSession()
               connected = false
-              setStatus('Disconnected. Tap Connect to reconnect.')
+              setStatus('Disconnected. Reconnecting...')
+              scheduleReconnect(3000)
               return
             }
 
@@ -345,23 +413,80 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               handleDoubleClickNavigation(bridge)
             }
           }
-        })
+        } catch (err) {
+          console.error('[bacpacer] event handler failed', err)
+          appendEventLog('Lifecycle: event handler error (recovered)')
+        }
+      })
 
+      unsubscribeDeviceStatus = bridge.onDeviceStatusChanged((status) => {
+        try {
+          if (
+            connected
+            && (status.connectType === DeviceConnectType.Disconnected
+              || status.connectType === DeviceConnectType.ConnectionFailed)
+          ) {
+            appendEventLog(`Lifecycle: device status ${String(status.connectType)}`)
+            appInForeground = false
+            exitDialogPending = false
+            clearExitDialogRecoveryTimer()
+            cleanupBridgeListeners()
+            resetRendererSession()
+            connected = false
+            setStatus('Disconnected. Reconnecting...')
+            scheduleReconnect(3000)
+          }
+        } catch (err) {
+          console.warn('[bacpacer] device status handler failed', err)
+        }
+      })
+
+      try {
         await initApp(bridge)
-        connected = true
-          appInForeground = true
-          exitDialogPending = false
-        clearExitDialogRecoveryTimer()
-        startRefreshTimer()
-        setStatus('Connected. Swipe to focus, click to open, double-click to go back.')
-        appendEventLog('Bridge connected - list menu ready')
       } catch (err) {
-        console.error('[bacpacer] connect failed', err)
-        setStatus('Bridge not found. Running in mock mode.')
-        appendEventLog('Connection failed')
-      } finally {
-        connecting = false
+        console.error('[bacpacer] initApp failed', err)
+        cleanupBridgeListeners()
+        setStatus('Initialization failed. Retrying...')
+        appendEventLog('Lifecycle: initApp failed (recovered)')
+        scheduleReconnect(3000)
+        return
       }
+
+      setRenderFailureHandler((_err) => {
+        if (!connected) return
+        appendEventLog('Lifecycle: repeated render failures detected')
+        appInForeground = false
+        exitDialogPending = false
+        clearExitDialogRecoveryTimer()
+        cleanupBridgeListeners()
+        resetRendererSession()
+        connected = false
+        setStatus('Disconnected. Reconnecting...')
+        scheduleReconnect(3000)
+      })
+
+      connected = true
+      appInForeground = true
+      exitDialogPending = false
+      clearExitDialogRecoveryTimer()
+      startRefreshTimer()
+      setStatus('Connected. Swipe to focus, click to open, double-click to go back.')
+      appendEventLog('Bridge connected - list menu ready')
+    } catch (err) {
+      console.error('[bacpacer] connect failed', err)
+      setStatus('Bridge not found. Running in mock mode.')
+      appendEventLog('Connection failed')
+      if (appInForeground) {
+        scheduleReconnect(5000)
+      }
+    } finally {
+      connecting = false
+    }
+  }
+
+  return {
+    connect: async () => {
+      await attemptConnect()
     },
 
     action: async () => {

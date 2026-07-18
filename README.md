@@ -78,3 +78,11 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 
 - Persisted state key: `bacpacer.persisted.v1`
 - Drink history is bounded to recent entries and persisted via bridge storage (with browser localStorage fallback).
+
+## Stability & Connection Resilience
+
+- **Background state persistence**: on phone background/headless WebView migration, active app state (current screen, drink log, BAC settings) is exported via `setBackgroundState`/`onBackgroundRestore` (see `_shared/background-state.ts`) so the app resumes where it left off instead of resetting.
+- **Error-guarded event handling**: the SDK event listener and app initialization are wrapped in try/catch so a single bad event or failed init can't silently kill the connection.
+- **Automatic reconnection**: the app listens for abnormal/system exit events, BLE device status changes (`onDeviceStatusChanged`), and repeated render failures, and automatically retries the bridge connection while the app remains in the foreground.
+- **Page visibility handling**: `pageshow` and `visibilitychange` listeners resynchronize the refresh timer and display when the WebView becomes visible again, in addition to the SDK's own foreground/background events.
+

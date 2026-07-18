@@ -1,11 +1,12 @@
 // App state and core logic for Bacpacer
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
-import { loadPersistedState, setBridge } from './state'
+import { loadPersistedState, registerBackgroundState, setBridge } from './state'
 import { initMenu, updateMenuDisplay } from './renderer'
 
 export async function initApp(appBridge: EvenAppBridge): Promise<void> {
   setBridge(appBridge)
+  registerBackgroundState()
   await loadPersistedState()
 
   appendEventLog('Bacpacer: initialised')

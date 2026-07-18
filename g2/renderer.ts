@@ -30,6 +30,17 @@ let currentLayoutMode: LayoutMode | null = null
 let renderQueue: Promise<void> = Promise.resolve()
 let standbyHudHidden = false
 
+type RenderFailureHandler = (err: unknown) => void
+let renderFailureHandler: RenderFailureHandler | null = null
+let consecutiveRenderFailures = 0
+const RENDER_FAILURE_THRESHOLD = 3
+
+// Lets the connection manager (main.ts) learn about repeated, unrecoverable
+// send failures so it can verify bridge viability and trigger a reconnect.
+export function setRenderFailureHandler(handler: RenderFailureHandler | null): void {
+  renderFailureHandler = handler
+}
+
 const SCREEN_WIDTH = 576
 const SCREEN_HEIGHT = 288
 const SIDE_WIDTH = SCREEN_WIDTH / 2
@@ -56,10 +67,27 @@ function trimForRebuild(content: string): string {
 }
 
 function runSerializedRender(task: () => Promise<void>): Promise<void> {
-  const next = renderQueue.then(task, task).catch((err) => {
-    console.warn('[bacpacer] render operation failed', err)
-    appendEventLog('Renderer: operation failed')
-  })
+  const next = renderQueue
+    .then(task, task)
+    .then(() => {
+      consecutiveRenderFailures = 0
+    })
+    .catch((err) => {
+      console.warn('[bacpacer] render operation failed', err)
+      appendEventLog('Renderer: operation failed')
+      consecutiveRenderFailures += 1
+
+      if (consecutiveRenderFailures >= RENDER_FAILURE_THRESHOLD) {
+        consecutiveRenderFailures = 0
+        if (renderFailureHandler) {
+          try {
+            renderFailureHandler(err)
+          } catch (handlerErr) {
+            console.warn('[bacpacer] render failure handler threw', handlerErr)
+          }
+        }
+      }
+    })
   renderQueue = next
   return next
 }
@@ -504,4 +532,5 @@ export function resetRendererSession(): void {
   currentLayoutMode = null
   renderQueue = Promise.resolve()
   standbyHudHidden = false
+  consecutiveRenderFailures = 0
 }
