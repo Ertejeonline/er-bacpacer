@@ -49,6 +49,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let connected = false
   let connecting = false
   let appInForeground = true
+  let autoReconnectEnabled = true
   let exitDialogPending = false
   let exitDialogRecoveryTimerId: number | null = null
   let unsubscribeEvenHubEvent: (() => void) | null = null
@@ -80,10 +81,12 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   }
 
   const scheduleReconnect = (delayMs: number) => {
+    if (!autoReconnectEnabled) return
+
     clearReconnectTimer()
     reconnectTimerId = window.setTimeout(() => {
       reconnectTimerId = null
-      if (connected || connecting || !appInForeground) return
+      if (connected || connecting || !appInForeground || !autoReconnectEnabled) return
       appendEventLog('Lifecycle: attempting automatic reconnect')
       void attemptConnect()
     }, delayMs)
@@ -267,6 +270,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     }
 
     connecting = true
+    autoReconnectEnabled = true
     clearReconnectTimer()
 
     setStatus('Connecting to Even bridge...')
@@ -411,12 +415,21 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
             }
             if (eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT || eventType === OsEventTypeList.SYSTEM_EXIT_EVENT) {
               appendEventLog(`Lifecycle: exit event=${String(eventType)}`)
+              const intentionalExit = exitDialogPending
               appInForeground = false
               exitDialogPending = false
               clearExitDialogRecoveryTimer()
               cleanupBridgeListeners()
               resetRendererSession()
               connected = false
+
+              if (intentionalExit) {
+                autoReconnectEnabled = false
+                appendEventLog('Lifecycle: intentional exit confirmed')
+                setStatus('Exited by user')
+                return
+              }
+
               setStatus('Disconnected. Reconnecting...')
               scheduleReconnect(3000)
               return
