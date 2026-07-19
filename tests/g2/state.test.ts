@@ -3,11 +3,14 @@ import { getBackgroundStateSnapshot, restoreBackgroundState } from '../../_share
 import {
   addDrinkPreset,
   clearDrinkEntries,
+  clearBridge,
   estimateDrinkDurationMs,
+  flushPersistedState,
   formatBacGdl,
   formatDrinkEntryTime,
   getBacEstimateAt,
   getBacSettings,
+  getBridge,
   getDrinkEntryEndTimestampMs,
   getDrinkPresets,
   loadPersistedState,
@@ -420,5 +423,65 @@ describe('g2/state', () => {
     expect(state.drinkEntries).toHaveLength(1)
     expect(state.drinkEntries[0]?.ml).toBe(250)
     expect(state.drinkPresets).toEqual([{ id: 'preset-1', ml: 150, percent: 13.5 }])
+  })
+})
+
+describe('g2/state persistence debounce & bridge lifecycle', () => {
+  beforeEach(() => {
+    resetState()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('coalesces rapid successive writes into a single debounced bridge call', async () => {
+    const setLocalStorage = vi.fn(async () => undefined)
+    setBridge({
+      getLocalStorage: async () => null,
+      setLocalStorage,
+    } as never)
+
+    setBpm(90)
+    setBpm(100)
+    setDrinkMl(300)
+
+    // Nothing should have been written yet; the write is debounced.
+    expect(setLocalStorage).not.toHaveBeenCalled()
+
+    await vi.runAllTimersAsync()
+
+    expect(setLocalStorage).toHaveBeenCalledTimes(1)
+    const [, payload] = setLocalStorage.mock.calls[0] as [string, string]
+    expect(JSON.parse(payload).bpm).toBe(100)
+    expect(JSON.parse(payload).drinkMl).toBe(300)
+  })
+
+  it('flushPersistedState writes immediately and is a no-op when nothing is pending', async () => {
+    const setLocalStorage = vi.fn(async () => undefined)
+    setBridge({
+      getLocalStorage: async () => null,
+      setLocalStorage,
+    } as never)
+
+    setPacerRunning(true)
+    await flushPersistedState()
+    expect(setLocalStorage).toHaveBeenCalledTimes(1)
+
+    await flushPersistedState()
+    expect(setLocalStorage).toHaveBeenCalledTimes(1)
+  })
+
+  it('clearBridge nulls the bridge reference so later calls fall back safely', () => {
+    setBridge({
+      getLocalStorage: async () => null,
+      setLocalStorage: async () => undefined,
+    } as never)
+
+    expect(getBridge()).not.toBeNull()
+    clearBridge()
+    expect(getBridge()).toBeNull()
   })
 })

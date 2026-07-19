@@ -1,6 +1,7 @@
 // Application state management
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { setBackgroundState, onBackgroundRestore } from '../_shared/background-state'
+import { executeSerialized } from '../_shared/bridge-serializer'
 
 export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink' | 'presets'
 
@@ -142,6 +143,18 @@ export function getBridge(): EvenAppBridge | null {
 
 export function setBridge(b: EvenAppBridge): void {
   _bridge = b
+  // A new bridge session invalidates any in-flight debounce timer; the
+  // in-memory state is unaffected and the next state change (or an explicit
+  // flush on background/exit) will schedule a fresh write against it.
+  if (persistDebounceTimerId !== null) {
+    clearTimeout(persistDebounceTimerId)
+    persistDebounceTimerId = null
+  }
+  pendingSerializedState = null
+}
+
+export function clearBridge(): void {
+  _bridge = null
 }
 
 function canUseBrowserStorage(): boolean {
@@ -322,19 +335,54 @@ function savePersistedStateToBrowserStorage(serialized: string): void {
   }
 }
 
+const PERSIST_DEBOUNCE_MS = 400
+let persistDebounceTimerId: ReturnType<typeof setTimeout> | null = null
+let pendingSerializedState: string | null = null
+
 export function savePersistedState(): void {
   const serialized = JSON.stringify(toPersistedState())
   const bridge = getBridge()
 
-  if (bridge) {
-    void bridge.setLocalStorage(PERSISTENCE_KEY, serialized).catch((err) => {
-      console.warn('[bacpacer] failed to save persisted state to bridge storage', err)
-      savePersistedStateToBrowserStorage(serialized)
-    })
+  if (!bridge) {
+    savePersistedStateToBrowserStorage(serialized)
     return
   }
 
-  savePersistedStateToBrowserStorage(serialized)
+  pendingSerializedState = serialized
+  if (persistDebounceTimerId !== null) return
+  persistDebounceTimerId = setTimeout(() => {
+    persistDebounceTimerId = null
+    flushPersistedState()
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+// Flushes any pending debounced write immediately. Call this on lifecycle
+// exit boundaries (background, disconnect, exit) so state is never lost.
+// Returns a promise so callers that need the write to complete (e.g. a
+// startup data-integrity resave) can await it; fire-and-forget callers can
+// simply ignore the returned promise.
+export function flushPersistedState(): Promise<void> {
+  if (persistDebounceTimerId !== null) {
+    clearTimeout(persistDebounceTimerId)
+    persistDebounceTimerId = null
+  }
+
+  const serialized = pendingSerializedState
+  if (serialized === null) return Promise.resolve()
+  pendingSerializedState = null
+
+  const bridge = getBridge()
+  if (!bridge) {
+    savePersistedStateToBrowserStorage(serialized)
+    return Promise.resolve()
+  }
+
+  return executeSerialized(() => bridge.setLocalStorage(PERSISTENCE_KEY, serialized), 5000, 'setLocalStorage')
+    .then(() => {})
+    .catch((err) => {
+      console.warn('[bacpacer] failed to save persisted state to bridge storage', err)
+      savePersistedStateToBrowserStorage(serialized)
+    })
 }
 
 function applyHydratedState(raw: string): void {
@@ -416,12 +464,15 @@ export async function loadPersistedState(): Promise<void> {
   }
 
   try {
-    const raw = await bridge.getLocalStorage(PERSISTENCE_KEY)
+    const raw = await executeSerialized(() => bridge.getLocalStorage(PERSISTENCE_KEY), 5000, 'getLocalStorage')
     if (!raw) {
       loadPersistedStateFromBrowserStorage()
       return
     }
     applyHydratedState(raw)
+    // Ensure any startup data-integrity resave (e.g. pruning stale entries)
+    // completes rather than waiting out the debounce window.
+    await flushPersistedState()
   } catch (err) {
     console.warn('[bacpacer] failed to load persisted state from bridge storage', err)
     loadPersistedStateFromBrowserStorage()

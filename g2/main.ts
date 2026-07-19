@@ -12,7 +12,8 @@ import {
   formatDrinkEntryTime,
   removeDrinkPreset,
   removeDrinkEntry,
-  savePersistedState,
+  flushPersistedState,
+  clearBridge,
   setBacSettings,
   setMenuItem,
   setFocusedMenuItem,
@@ -175,31 +176,40 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   }
 
   const cleanupBridgeListeners = () => {
-    if (unsubscribeEvenHubEvent) {
-      try {
-        unsubscribeEvenHubEvent()
-        appendEventLog('EvenHub event listener cleaned up')
-      } catch (err) {
-        console.warn('[bacpacer] cleanup listener failed', err)
-      } finally {
-        unsubscribeEvenHubEvent = null
-      }
-    }
+    flushPersistedState()
 
-    if (unsubscribeDeviceStatus) {
-      try {
-        unsubscribeDeviceStatus()
-      } catch (err) {
-        console.warn('[bacpacer] cleanup device status listener failed', err)
-      } finally {
-        unsubscribeDeviceStatus = null
-      }
-    }
+    const unsubEvent = unsubscribeEvenHubEvent
+    const unsubDevice = unsubscribeDeviceStatus
+    unsubscribeEvenHubEvent = null
+    unsubscribeDeviceStatus = null
 
     setRenderFailureHandler(null)
-
     stopRefreshTimer()
     clearExitDialogRecoveryTimer()
+    clearBridge()
+
+    // Defer the actual unsubscribe call so it never runs synchronously from
+    // within the listener callback that may have triggered this cleanup.
+    if (unsubEvent) {
+      window.setTimeout(() => {
+        try {
+          unsubEvent()
+          appendEventLog('EvenHub event listener cleaned up')
+        } catch (err) {
+          console.warn('[bacpacer] cleanup listener failed', err)
+        }
+      }, 0)
+    }
+
+    if (unsubDevice) {
+      window.setTimeout(() => {
+        try {
+          unsubDevice()
+        } catch (err) {
+          console.warn('[bacpacer] cleanup device status listener failed', err)
+        }
+      }, 0)
+    }
   }
 
   const registerTeardown = () => {
@@ -232,7 +242,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
         appendEventLog('Lifecycle: visibilitychange hidden')
         appInForeground = false
         stopRefreshTimer()
-        savePersistedState()
+        flushPersistedState()
       }
     })
   }

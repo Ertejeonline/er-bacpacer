@@ -8,6 +8,7 @@ import {
   TextContainerUpgrade,
 } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
+import { executeSerialized, resetBridgeSerializer } from '../_shared/bridge-serializer'
 import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryEndTimestampMs, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
 
 const MENU_ITEMS: { id: MenuItem; label: string }[] = [
@@ -28,13 +29,13 @@ const ADD_DRINK_MENU_ITEMS = [
 let containersCreated = false
 type LayoutMode = 'main-menu' | 'adddrink-menu' | 'presets-menu' | 'detail' | 'standby-detail'
 let currentLayoutMode: LayoutMode | null = null
-let renderQueue: Promise<void> = Promise.resolve()
 let standbyHudHidden = false
 
 type RenderFailureHandler = (err: unknown) => void
 let renderFailureHandler: RenderFailureHandler | null = null
 let consecutiveRenderFailures = 0
 const RENDER_FAILURE_THRESHOLD = 3
+const RENDER_TIMEOUT_MS = 5000
 
 // Lets the connection manager (main.ts) learn about repeated, unrecoverable
 // send failures so it can verify bridge viability and trigger a reconnect.
@@ -68,8 +69,7 @@ function trimForRebuild(content: string): string {
 }
 
 function runSerializedRender(task: () => Promise<void>): Promise<void> {
-  const next = renderQueue
-    .then(task, task)
+  return executeSerialized(task, RENDER_TIMEOUT_MS, 'render')
     .then(() => {
       consecutiveRenderFailures = 0
     })
@@ -89,8 +89,6 @@ function runSerializedRender(task: () => Promise<void>): Promise<void> {
         }
       }
     })
-  renderQueue = next
-  return next
 }
 
 function isStandbyDetailContext(): boolean {
@@ -570,7 +568,7 @@ export async function updateDisplay(): Promise<void> {
 export function resetRendererSession(): void {
   containersCreated = false
   currentLayoutMode = null
-  renderQueue = Promise.resolve()
+  resetBridgeSerializer()
   standbyHudHidden = false
   consecutiveRenderFailures = 0
 }

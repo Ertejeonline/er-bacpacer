@@ -89,4 +89,6 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 - **Manual reconnect behavior**: disconnects, abnormal/system exits, and repeated render failures now stop the session and require an explicit Connect action from the user.
 - **Intentional exit handling**: when the user confirms exit from the root menu dialog, the app stays exited and does not auto-relaunch.
 - **Page visibility handling**: `pageshow` and `visibilitychange` listeners resynchronize the refresh timer and display when the WebView becomes visible again, in addition to the SDK's own foreground/background events.
+- **Bridge call serialization**: all BLE bridge calls (renders and local storage reads/writes) are serialized through a shared queue (`_shared/bridge-serializer.ts`) with per-call timeouts, preventing concurrent bridge operations from hanging or corrupting state.
+- **Debounced persistence**: `savePersistedState()` debounces bridge writes (400ms); `flushPersistedState()` writes immediately at lifecycle boundaries (backgrounding, teardown) so no state is lost. `clearBridge()` clears any pending debounced write when the bridge changes (e.g. on reconnect).
 
