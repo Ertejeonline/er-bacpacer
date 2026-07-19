@@ -49,13 +49,11 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let connected = false
   let connecting = false
   let appInForeground = true
-  let autoReconnectEnabled = true
   let exitDialogPending = false
   let exitDialogRecoveryTimerId: number | null = null
   let unsubscribeEvenHubEvent: (() => void) | null = null
   let unsubscribeDeviceStatus: (() => void) | null = null
   let refreshTimerId: number | null = null
-  let reconnectTimerId: number | null = null
   let lastStandbyHudToggleAtMs = 0
   let teardownRegistered = false
 
@@ -71,25 +69,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       window.clearTimeout(exitDialogRecoveryTimerId)
       exitDialogRecoveryTimerId = null
     }
-  }
-
-  const clearReconnectTimer = () => {
-    if (reconnectTimerId !== null) {
-      window.clearTimeout(reconnectTimerId)
-      reconnectTimerId = null
-    }
-  }
-
-  const scheduleReconnect = (delayMs: number) => {
-    if (!autoReconnectEnabled) return
-
-    clearReconnectTimer()
-    reconnectTimerId = window.setTimeout(() => {
-      reconnectTimerId = null
-      if (connected || connecting || !appInForeground || !autoReconnectEnabled) return
-      appendEventLog('Lifecycle: attempting automatic reconnect')
-      void attemptConnect()
-    }, delayMs)
   }
 
   const startRefreshTimer = () => {
@@ -228,7 +207,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     teardownRegistered = true
 
     const onTeardown = () => {
-      clearReconnectTimer()
       cleanupBridgeListeners()
     }
 
@@ -270,8 +248,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     }
 
     connecting = true
-    autoReconnectEnabled = true
-    clearReconnectTimer()
 
     setStatus('Connecting to Even bridge...')
     appendEventLog(`Bacpacer v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`)
@@ -424,14 +400,12 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               connected = false
 
               if (intentionalExit) {
-                autoReconnectEnabled = false
                 appendEventLog('Lifecycle: intentional exit confirmed')
                 setStatus('Exited by user')
                 return
               }
 
-              setStatus('Disconnected. Reconnecting...')
-              scheduleReconnect(3000)
+              setStatus('Disconnected. Tap Connect to reconnect.')
               return
             }
 
@@ -466,8 +440,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
             cleanupBridgeListeners()
             resetRendererSession()
             connected = false
-            setStatus('Disconnected. Reconnecting...')
-            scheduleReconnect(3000)
+            setStatus('Disconnected. Tap Connect to reconnect.')
           }
         } catch (err) {
           console.warn('[bacpacer] device status handler failed', err)
@@ -479,9 +452,8 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       } catch (err) {
         console.error('[bacpacer] initApp failed', err)
         cleanupBridgeListeners()
-        setStatus('Initialization failed. Retrying...')
+        setStatus('Initialization failed. Tap Connect to retry.')
         appendEventLog('Lifecycle: initApp failed (recovered)')
-        scheduleReconnect(3000)
         return
       }
 
@@ -494,8 +466,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
         cleanupBridgeListeners()
         resetRendererSession()
         connected = false
-        setStatus('Disconnected. Reconnecting...')
-        scheduleReconnect(3000)
+        setStatus('Disconnected. Tap Connect to reconnect.')
       })
 
       connected = true
@@ -509,9 +480,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       console.error('[bacpacer] connect failed', err)
       setStatus('Bridge not found. Running in mock mode.')
       appendEventLog('Connection failed')
-      if (appInForeground) {
-        scheduleReconnect(5000)
-      }
     } finally {
       connecting = false
     }
