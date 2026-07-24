@@ -37,7 +37,7 @@ function makeBridgeMocks() {
   return {
     createStartUpPageContainer: vi.fn(async () => 0),
     rebuildPageContainer: vi.fn(async () => true),
-    textContainerUpgrade: vi.fn(async () => 0),
+    textContainerUpgrade: vi.fn(async () => true),
   }
 }
 
@@ -241,6 +241,28 @@ describe('g2/renderer', () => {
     expect(hiddenTopLeft?.content).toBe(' ')
   })
 
+  it('forces next render to rebuild layout after a text upgrade failure', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+
+    let firstUpgrade = true
+    bridge.textContainerUpgrade.mockImplementation(async () => {
+      if (firstUpgrade) {
+        firstUpgrade = false
+        return false
+      }
+      return true
+    })
+
+    await updateMenuDisplay()
+    expect(bridge.createStartUpPageContainer).toHaveBeenCalledTimes(1)
+
+    bridge.createStartUpPageContainer.mockClear()
+    await updateMenuDisplay()
+
+    expect(bridge.createStartUpPageContainer).toHaveBeenCalledTimes(1)
+  })
+
   it('shows down-right trend arrow when BAC is falling', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
@@ -262,7 +284,7 @@ describe('g2/renderer', () => {
       .find((payload) => payload.containerID === 6)
 
     expect(bottomRightUpdate).toBeDefined()
-    expect(bottomRightUpdate?.content).toContain('↘️')
+    expect(bottomRightUpdate?.content).toContain('↘')
   })
 
   it('replaces detailed peak BAC line with compact down-right trend in summary when falling', async () => {
@@ -286,7 +308,74 @@ describe('g2/renderer', () => {
       .find((payload) => payload.containerID === 4)
 
     expect(summaryUpdate).toBeDefined()
-    expect(summaryUpdate?.content).toContain('Peak BAC: ↘️')
+    expect(summaryUpdate?.content).toContain('Peak BAC: ↘')
     expect(summaryUpdate?.content).not.toContain('Peak BAC at')
+  })
+
+  it('shows rising peak BAC in the bottom-left container on first render', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+
+    const now = Date.now()
+    state.drinkEntries = [{
+      ml: 600,
+      percent: 5,
+      timestampMs: now - (10 * 60 * 1000),
+      endTimestampMs: now + (20 * 60 * 1000),
+    }]
+
+    await updateMenuDisplay()
+
+    const startupPayload = bridge.createStartUpPageContainer.mock.calls[0]?.[0] as {
+      textObject?: Array<{ containerID?: number; content?: string }>
+    }
+
+    const bottomLeft = startupPayload.textObject?.find((payload) => payload.containerID === 5)
+    expect(bottomLeft).toBeDefined()
+    expect(bottomLeft?.content).toMatch(/^Peak BAC \d+\.\d{3} at \d{2}:\d{2}$/)
+  })
+
+  it('shows rising peak BAC in bottom-left updates across screens and clears it when BAC is falling', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+
+    const now = Date.now()
+    state.drinkEntries = [{
+      ml: 600,
+      percent: 5,
+      timestampMs: now - (10 * 60 * 1000),
+      endTimestampMs: now + (20 * 60 * 1000),
+    }]
+
+    await updateMenuDisplay()
+    bridge.textContainerUpgrade.mockClear()
+
+    state.menuVisible = false
+    state.currentMenuItem = 'presets'
+    await updateMenuDisplay()
+
+    const risingBottomLeftUpdate = bridge.textContainerUpgrade.mock.calls
+      .map((args) => args[0] as { containerID?: number; content?: string })
+      .find((payload) => payload.containerID === 5)
+
+    expect(risingBottomLeftUpdate).toBeDefined()
+    expect(risingBottomLeftUpdate?.content).toMatch(/^Peak BAC \d+\.\d{3} at \d{2}:\d{2}$/)
+
+    bridge.textContainerUpgrade.mockClear()
+    state.drinkEntries = [{
+      ml: 600,
+      percent: 5,
+      timestampMs: now - (120 * 60 * 1000),
+      endTimestampMs: now - (90 * 60 * 1000),
+    }]
+
+    await updateMenuDisplay()
+
+    const fallingBottomLeftUpdate = bridge.textContainerUpgrade.mock.calls
+      .map((args) => args[0] as { containerID?: number; content?: string })
+      .find((payload) => payload.containerID === 5)
+
+    expect(fallingBottomLeftUpdate).toBeDefined()
+    expect(fallingBottomLeftUpdate?.content).toBe(' ')
   })
 })

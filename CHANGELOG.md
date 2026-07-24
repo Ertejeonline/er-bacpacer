@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.7] - 2026-07-24
+
+### Added
+- Reused the bottom-left HUD slot to show `Peak BAC X.XXX at HH:MM` on every screen while BAC is still rising
+
+## [1.5.6] - 2026-07-24
+
+### Fixed
+- Replaced emoji-style trend arrows with plain arrow glyphs so LVGL no longer receives U+FE0F (variation selector) and logs missing-glyph warnings.
+
+## [1.5.5] - 2026-07-24
+
+### Fixed
+- Added explicit `textContainerUpgrade` success checks in the renderer and automatic recovery when an upgrade fails
+- Failed text upgrades now mark layout state stale so the next render recreates the page cleanly instead of continuing to send invalid upgrade calls
+- Added `contentOffset: 0` and `contentLength: 0` on full text replacements to match SDK guidance
+
 ## [1.5.4] - 2026-07-20
 
 ### Fixed

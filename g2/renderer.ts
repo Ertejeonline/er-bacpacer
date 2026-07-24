@@ -63,6 +63,12 @@ type PageConfig = {
   listObject?: ListContainerProperty[]
 }
 
+type TextUpgradeTarget = {
+  containerID: number
+  containerName: string
+  content: string
+}
+
 function trimForRebuild(content: string): string {
   if (content.length <= MAX_RIGHT_CONTENT_CHARS) return content
   return `${content.slice(0, MAX_RIGHT_CONTENT_CHARS - 3)}...`
@@ -134,7 +140,7 @@ function getTopRightContent(): string {
 
 function getBacTrendMarker(isRisingToPeak: boolean, bacGdl: number): string {
   if (bacGdl <= 0) return ''
-  return isRisingToPeak ? ' ↗️' : ' ↘️'
+  return isRisingToPeak ? ' ↗' : ' ↘'
 }
 
 function getMainRightContent(estimate: BacEstimate = getBacEstimateAt()): string {
@@ -147,7 +153,7 @@ function getMainRightContent(estimate: BacEstimate = getBacEstimateAt()): string
     const trendMarker = getBacTrendMarker(estimate.isRisingToPeak, estimate.bacGdl)
     const secondaryLine = estimate.isRisingToPeak
       ? `Peak BAC at ${peakAt}: ${peakBac}`
-      : 'Peak BAC: ↘️'
+      : 'Peak BAC: ↘'
 
     return trimForRebuild([
       `Current BAC: ${currentBac}${trendMarker}`,
@@ -197,6 +203,16 @@ function getBottomRightContent(estimate: BacEstimate = getBacEstimateAt()): stri
   return `${formatBacGdl(estimate.bacGdl)}${trendMarker}`
 }
 
+function getBottomLeftContent(estimate: BacEstimate = getBacEstimateAt()): string {
+  if (standbyHudHidden && isStandbyDetailContext()) return ' '
+
+  if (estimate.bacGdl <= 0 || !estimate.isRisingToPeak) return ' '
+
+  const peakBac = formatBacGdl(estimate.peakBacGdl)
+  const peakAt = estimate.peakAtMs ? formatDrinkEntryTime(estimate.peakAtMs) : '--:--'
+  return `Peak BAC ${peakBac} at ${peakAt}`
+}
+
 function buildStaticTextContainers(): TextContainerProperty[] {
   const estimate = getBacEstimateAt()
 
@@ -231,7 +247,7 @@ function buildStaticTextContainers(): TextContainerProperty[] {
     new TextContainerProperty({
       containerID: 5,
       containerName: 'BottomLeft',
-      content: '',
+      content: getBottomLeftContent(estimate),
       xPosition: 0,
       yPosition: SCREEN_HEIGHT - SIDE_HEIGHT,
       width: SIDE_WIDTH,
@@ -307,45 +323,72 @@ async function applyPage(config: PageConfig): Promise<boolean> {
 }
 
 async function updateTopRightCountdownOnlyInternal(): Promise<void> {
-  const b = getBridge()
-  if (!b || !containersCreated) return
-
-  await b.textContainerUpgrade(new TextContainerUpgrade({
+  await upgradeTextContainerInternal({
     containerID: 2,
     containerName: 'TopRight',
     content: getTopRightContent(),
-  }))
+  })
 }
 
 async function updateRightDynamicContentOnlyInternal(): Promise<void> {
-  const b = getBridge()
-  if (!b || !containersCreated) return
+  if (!containersCreated) return
 
   await updateTopRightCountdownOnlyInternal()
+  if (!containersCreated) return
   const estimate = getBacEstimateAt()
 
-  await b.textContainerUpgrade(new TextContainerUpgrade({
+  const topLeftUpdated = await upgradeTextContainerInternal({
     containerID: 1,
     containerName: 'TopLeft',
     content: getTopLeftContent(),
-  }))
+  })
+  if (!topLeftUpdated) return
 
-  await b.textContainerUpgrade(new TextContainerUpgrade({
+  const mainRightUpdated = await upgradeTextContainerInternal({
     containerID: 4,
     containerName: 'MainRight',
     content: getMainRightContent(estimate),
-  }))
+  })
+  if (!mainRightUpdated) return
 
-  await b.textContainerUpgrade(new TextContainerUpgrade({
+  const bottomLeftUpdated = await upgradeTextContainerInternal({
+    containerID: 5,
+    containerName: 'BottomLeft',
+    content: getBottomLeftContent(estimate),
+  })
+  if (!bottomLeftUpdated) return
+
+  await upgradeTextContainerInternal({
     containerID: 6,
     containerName: 'BottomRight',
     content: getBottomRightContent(estimate),
+  })
+}
+
+async function upgradeTextContainerInternal(target: TextUpgradeTarget): Promise<boolean> {
+  const b = getBridge()
+  if (!b || !containersCreated) return false
+
+  const upgraded = await b.textContainerUpgrade(new TextContainerUpgrade({
+    containerID: target.containerID,
+    containerName: target.containerName,
+    contentOffset: 0,
+    contentLength: 0,
+    content: target.content,
   }))
+
+  if (upgraded) return true
+
+  appendEventLog(`Renderer: text upgrade failed id=${target.containerID} name=${target.containerName}`)
+
+  // Mark renderer state as stale so the next display pass recreates layout.
+  containersCreated = false
+  currentLayoutMode = null
+  return false
 }
 
 async function updateMenuDisplayInternal(): Promise<void> {
-  const b = getBridge()
-  if (!b) return
+  if (!getBridge()) return
 
   if (!isStandbyDetailContext() && standbyHudHidden) {
     standbyHudHidden = false
@@ -386,18 +429,20 @@ async function updateMenuDisplayInternal(): Promise<void> {
   } else if (targetLayoutMode === 'detail') {
     // Same detail layout: update only text content without rebuilding page.
     const body = getScreenBody(state.currentMenuItem)
-    await b.textContainerUpgrade(new TextContainerUpgrade({
+    const detailUpdated = await upgradeTextContainerInternal({
       containerID: 3,
       containerName: 'MainLeftDetail',
       content: body,
-    }))
+    })
+    if (!detailUpdated) return
   }
 
-  await b.textContainerUpgrade(new TextContainerUpgrade({
+  const topLeftUpdated = await upgradeTextContainerInternal({
     containerID: 1,
     containerName: 'TopLeft',
     content: getTopLeftContent(),
-  }))
+  })
+  if (!topLeftUpdated) return
 
   await updateRightDynamicContentOnlyInternal()
 }

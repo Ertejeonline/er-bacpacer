@@ -18,7 +18,8 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - each entry has start and computed end time
 - BAC estimate model:
   - tracks current BAC and peak BAC
-  - shows trend arrows (rising `↗️`, falling `↘️`) in BAC displays
+  - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
+  - shows `Peak BAC X.XXX at HH:MM` in the bottom-left HUD while BAC is still rising
   - estimates sober time
   - supports food profile, metabolism slider, and profile inputs
 - Companion web UI:
@@ -90,5 +91,6 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 - **Intentional exit handling**: when the user confirms exit from the root menu dialog, the app stays exited and does not auto-relaunch.
 - **Page visibility handling**: `pageshow` and `visibilitychange` listeners resynchronize the refresh timer and display when the WebView becomes visible again, in addition to the SDK's own foreground/background events.
 - **Bridge call serialization**: all BLE bridge calls (renders and local storage reads/writes) are serialized through a shared queue (`_shared/bridge-serializer.ts`) with per-call timeouts, preventing concurrent bridge operations from hanging or corrupting state.
+- **Text-upgrade self-healing**: if a `textContainerUpgrade` call fails (for example after a stale page/session transition), the renderer marks layout state stale and recreates the page on the next render pass instead of repeatedly sending failing upgrades.
 - **Debounced persistence**: `savePersistedState()` debounces bridge writes (400ms); `flushPersistedState()` writes immediately at lifecycle boundaries (backgrounding, teardown) so no state is lost. `clearBridge()` clears any pending debounced write when the bridge changes (e.g. on reconnect).
 
