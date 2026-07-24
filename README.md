@@ -16,6 +16,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - load a saved preset on glasses to replace the current default volume and strength
   - confirm `Add drink` to store an entry
   - each entry has start and computed end time
+  - if a new drink is logged before the previous one finishes, the interrupted remainder is carried forward in the glasses HUD instead of being lost
 - BAC estimate model:
   - tracks current BAC and peak BAC
   - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
@@ -82,6 +83,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 
 - Persisted state key: `bacpacer.persisted.v1`
 - Drink history and saved presets are persisted via bridge storage (with browser localStorage fallback).
+- The top-right standby countdown is reconstructed from the persisted drink log, including carry-over from interrupted drinks, so reconnects or crashes do not reset the remaining time debt.
 
 ## Stability & Connection Resilience
 

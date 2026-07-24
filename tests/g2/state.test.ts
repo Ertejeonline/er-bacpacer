@@ -12,7 +12,9 @@ import {
   getBacSettings,
   getBridge,
   getDrinkEntryEndTimestampMs,
+  getDrinkEntryPlannedEndTimestampMs,
   getDrinkPresets,
+  getStandbyCountdown,
   loadPersistedState,
   registerBackgroundState,
   removeDrinkPreset,
@@ -106,6 +108,32 @@ describe('g2/state', () => {
     expect(created.timestampMs).toBe(now)
     expect(state.drinkEntries[0]?.timestampMs).toBe(now)
     expect(state.drinkEntries[1]?.endTimestampMs).toBe(now)
+    expect(state.drinkEntries[1]?.plannedEndTimestampMs).toBe((now - 60000) + estimateDrinkDurationMs(200, 10))
+  })
+
+  it('derives cumulative standby countdown carry-over from interrupted drinks', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+
+    setDrinkMl(100)
+    setDrinkPercent(10)
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink()
+
+    nowSpy.mockReturnValue(10 * 60_000)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(10 * 60_000)).toEqual({
+      activeMinutes: 20,
+      carryOverMinutes: 10,
+    })
+
+    nowSpy.mockReturnValue(25 * 60_000)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(25 * 60_000)).toEqual({
+      activeMinutes: 20,
+      carryOverMinutes: 15,
+    })
   })
 
   it('returns zero BAC estimate with no entries', () => {
@@ -349,6 +377,47 @@ describe('g2/state', () => {
     expect('eliminationRatePerHour' in state.bacSettings).toBe(false)
     expect('absorptionMinutes' in state.bacSettings).toBe(false)
     expect(setLocalStorage).toHaveBeenCalledTimes(1)
+  })
+
+  it('reconstructs legacy interrupted-drink carry-over when planned finish was not stored', async () => {
+    const now = 25 * 60 * 60 * 1000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+
+    const getLocalStorage = vi.fn(async () => JSON.stringify({
+      drinkEntries: [
+        {
+          ml: 100,
+          percent: 10,
+          timestampMs: now - (25 * 60_000),
+          endTimestampMs: now - (15 * 60_000),
+        },
+        {
+          ml: 100,
+          percent: 10,
+          timestampMs: now - (15 * 60_000),
+          endTimestampMs: now + (5 * 60_000),
+        },
+      ],
+    }))
+
+    setBridge({
+      getLocalStorage,
+      setLocalStorage: vi.fn(async () => undefined),
+    } as never)
+
+    await loadPersistedState()
+
+    const activeEntry = state.drinkEntries.find((entry) => entry.timestampMs === now - (15 * 60_000))
+    const interruptedEntry = state.drinkEntries.find((entry) => entry.timestampMs === now - (25 * 60_000))
+
+    expect(activeEntry).toBeDefined()
+    expect(interruptedEntry).toBeDefined()
+    expect(getDrinkEntryPlannedEndTimestampMs(activeEntry!)).toBe(now + (5 * 60_000))
+    expect(getDrinkEntryPlannedEndTimestampMs(interruptedEntry!)).toBe(now - (5 * 60_000))
+    expect(getStandbyCountdown(now)).toEqual({
+      activeMinutes: 5,
+      carryOverMinutes: 10,
+    })
   })
 
   it('formats BAC and drink entry time values', () => {

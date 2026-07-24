@@ -9,7 +9,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
 import { executeSerialized, resetBridgeSerializer } from '../_shared/bridge-serializer'
-import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryEndTimestampMs, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
+import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryEndTimestampMs, getStandbyCountdown, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
 
 const MENU_ITEMS: { id: MenuItem; label: string }[] = [
   { id: 'standBy', label: 'Stand by' },
@@ -129,11 +129,15 @@ function getTopLeftContent(): string {
 function getTopRightContent(): string {
   if (standbyHudHidden && isStandbyDetailContext()) return ' '
 
-  const latest = state.drinkEntries[0]
-  if (!latest) return ' '
+  const countdown = getStandbyCountdown(Date.now())
+  if (!countdown) return ' '
+  if (countdown.activeMinutes > 0 && countdown.carryOverMinutes > 0) {
+    return `${countdown.activeMinutes} +${countdown.carryOverMinutes}`
+  }
 
-  const nextDrinkAtMs = getDrinkEntryEndTimestampMs(latest)
-  const remainingMinutes = Math.round((nextDrinkAtMs - Date.now()) / 60_000)
+  const remainingMinutes = countdown.activeMinutes > 0
+    ? countdown.activeMinutes
+    : countdown.carryOverMinutes
   if (remainingMinutes <= 0) return ' '
   return `${remainingMinutes}`
 }

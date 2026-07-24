@@ -10,6 +10,7 @@ export type DrinkEntry = {
   percent: number
   timestampMs: number
   endTimestampMs?: number
+  plannedEndTimestampMs?: number
 }
 
 export type DrinkPreset = {
@@ -56,6 +57,11 @@ export type BacEstimate = {
   absorbedAlcoholGrams: number
   hoursSinceFirstDrink: number
   estimatedSoberAtMs: number | null
+}
+
+export type StandbyCountdown = {
+  activeMinutes: number
+  carryOverMinutes: number
 }
 
 type ModeledDrinkEntry = {
@@ -190,6 +196,12 @@ export function getDrinkEntryEndTimestampMs(entry: DrinkEntry): number {
   return Math.max(entry.timestampMs, entry.endTimestampMs)
 }
 
+export function getDrinkEntryPlannedEndTimestampMs(entry: DrinkEntry): number {
+  const fallbackEnd = entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent)
+  if (typeof entry.plannedEndTimestampMs !== 'number') return fallbackEnd
+  return Math.max(entry.timestampMs, entry.plannedEndTimestampMs)
+}
+
 function normalizeFoodProfile(value: unknown): BacFoodProfile {
   if (value === 'empty' || value === 'light' || value === 'heavy') return value
   return DEFAULT_BAC_SETTINGS.foodProfile
@@ -320,6 +332,7 @@ function toPersistedState(): PersistedState {
       percent: clampNumber(entry.percent, 0, 100),
       timestampMs: entry.timestampMs,
       endTimestampMs: getDrinkEntryEndTimestampMs(entry),
+      plannedEndTimestampMs: getDrinkEntryPlannedEndTimestampMs(entry),
     })),
     drinkPresets: state.drinkPresets.slice(0, 100).map((preset) => normalizeDrinkPreset(preset, preset.id)),
     bacSettings: normalizeBacSettings(state.bacSettings),
@@ -416,7 +429,10 @@ function applyHydratedState(raw: string): void {
           const endTimestampMs = typeof candidate.endTimestampMs === 'number'
             ? Math.max(timestampMs, candidate.endTimestampMs)
             : estimatedEnd
-          return { ml, percent, timestampMs, endTimestampMs }
+          const plannedEndTimestampMs = typeof candidate.plannedEndTimestampMs === 'number'
+            ? Math.max(timestampMs, candidate.plannedEndTimestampMs)
+            : estimatedEnd
+          return { ml, percent, timestampMs, endTimestampMs, plannedEndTimestampMs }
         })
         .filter((entry) => (now - entry.timestampMs) < DRINK_ENTRY_MAX_AGE_MS)
         .slice(0, 500)
@@ -702,6 +718,36 @@ export function getBacEstimateWithSettings(overrideSettings: Partial<BacUserSett
   return estimate
 }
 
+export function getStandbyCountdown(nowMs: number = Date.now()): StandbyCountdown | null {
+  let activeRemainingMs = 0
+  let carryOverMs = 0
+
+  for (const entry of state.drinkEntries) {
+    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
+    const plannedEndMs = getDrinkEntryPlannedEndTimestampMs(entry)
+
+    if (actualEndMs > nowMs) {
+      activeRemainingMs = Math.max(activeRemainingMs, actualEndMs - nowMs)
+    }
+
+    if (plannedEndMs > actualEndMs) {
+      carryOverMs += plannedEndMs - actualEndMs
+    }
+  }
+
+  const activeMinutes = Math.max(0, Math.round(activeRemainingMs / 60_000))
+  const carryOverMinutes = Math.max(0, Math.round(carryOverMs / 60_000))
+
+  if (activeMinutes <= 0 && carryOverMinutes <= 0) {
+    return null
+  }
+
+  return {
+    activeMinutes,
+    carryOverMinutes,
+  }
+}
+
 export function formatBacGdl(value: number): string {
   return value.toFixed(3)
 }
@@ -715,12 +761,15 @@ export function storeCurrentDrink(): DrinkEntry {
     percent: clampNumber(state.drinkPercent, 0, 100),
     timestampMs: now,
     endTimestampMs: now + estimatedDurationMs,
+    plannedEndTimestampMs: now + estimatedDurationMs,
   }
 
   if (previousLatest) {
     const previousEnd = getDrinkEntryEndTimestampMs(previousLatest)
     if (previousEnd > now) {
+      const previousPlannedEnd = getDrinkEntryPlannedEndTimestampMs(previousLatest)
       previousLatest.endTimestampMs = now
+      previousLatest.plannedEndTimestampMs = previousPlannedEnd
     }
   }
 
@@ -786,13 +835,20 @@ export function updateDrinkEntry(originalTimestampMs: number, nextEntry: DrinkEn
     return false
   }
 
+  const currentEntry = state.drinkEntries[index]
+  const endTimestampMs = typeof nextEntry.endTimestampMs === 'number'
+    ? Math.max(nextEntry.timestampMs, nextEntry.endTimestampMs)
+    : (nextEntry.timestampMs + estimateDrinkDurationMs(nextEntry.ml, nextEntry.percent))
+  const fallbackPlannedEndTimestampMs = getDrinkEntryPlannedEndTimestampMs(currentEntry)
+
   const updatedEntry: DrinkEntry = {
     ml: clampNumber(nextEntry.ml, 0, 2000),
     percent: clampNumber(nextEntry.percent, 0, 100),
     timestampMs: nextEntry.timestampMs,
-    endTimestampMs: typeof nextEntry.endTimestampMs === 'number'
-      ? Math.max(nextEntry.timestampMs, nextEntry.endTimestampMs)
-      : (nextEntry.timestampMs + estimateDrinkDurationMs(nextEntry.ml, nextEntry.percent)),
+    endTimestampMs,
+    plannedEndTimestampMs: typeof nextEntry.plannedEndTimestampMs === 'number'
+      ? Math.max(endTimestampMs, nextEntry.plannedEndTimestampMs)
+      : Math.max(endTimestampMs, fallbackPlannedEndTimestampMs),
   }
 
   const nextEntries = [...state.drinkEntries]
