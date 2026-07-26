@@ -56,6 +56,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let unsubscribeDeviceStatus: (() => void) | null = null
   let refreshTimerId: number | null = null
   let lastStandbyHudToggleAtMs = 0
+  let displayRefreshQueued = false
   let teardownRegistered = false
 
   const stopRefreshTimer = () => {
@@ -81,7 +82,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     const tick = () => {
       if (!connected || !appInForeground) return
       if (!state.menuVisible && state.currentMenuItem === 'standBy' && isStandbyHudHidden()) return
-      void updateMenuDisplay()
+      queueDisplayRefresh()
     }
 
     const safeTick = () => {
@@ -106,9 +107,22 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     scheduleIn(refreshIntervalMs)
   }
 
+  const queueDisplayRefresh = () => {
+    if (displayRefreshQueued) return
+    displayRefreshQueued = true
+
+    // Defer redraws to avoid mutating UI while EvenHub is still dispatching
+    // the current input batch.
+    window.setTimeout(() => {
+      displayRefreshQueued = false
+      if (!connected || !appInForeground) return
+      void updateMenuDisplay()
+    }, 0)
+  }
+
   const refreshDisplayIfActive = () => {
     if (!connected || !appInForeground) return
-    void updateMenuDisplay()
+    queueDisplayRefresh()
   }
 
   const isClickEventType = (eventType: number | undefined, source: 'list' | 'text' | 'sys') => {
@@ -271,8 +285,66 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
       // Use native list menu events for robust selection and highlight.
       unsubscribeEvenHubEvent = bridge.onEvenHubEvent((event) => {
         try {
+          if (event.sysEvent) {
+            const eventType = event.sysEvent.eventType ?? 0
+            if (eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
+              appendEventLog('Lifecycle: foreground enter')
+              if (exitDialogPending) {
+                appendEventLog('Lifecycle: exit dialog transition (enter)')
+                scheduleExitDialogRecovery()
+                return
+              }
 
-        if (event.listEvent) {
+              appInForeground = true
+              startRefreshTimer()
+              refreshDisplayIfActive()
+              return
+            }
+            if (eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT) {
+              appendEventLog('Lifecycle: foreground exit')
+              if (exitDialogPending) {
+                appendEventLog('Lifecycle: exit dialog transition (exit)')
+                scheduleExitDialogRecovery()
+                return
+              }
+              appInForeground = false
+              stopRefreshTimer()
+              return
+            }
+            if (eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT || eventType === OsEventTypeList.SYSTEM_EXIT_EVENT) {
+              appendEventLog(`Lifecycle: exit event=${String(eventType)}`)
+              const intentionalExit = exitDialogPending
+              appInForeground = false
+              exitDialogPending = false
+              clearExitDialogRecoveryTimer()
+              cleanupBridgeListeners()
+              resetRendererSession()
+              connected = false
+
+              if (intentionalExit) {
+                appendEventLog('Lifecycle: intentional exit confirmed')
+                setStatus('Exited by user')
+                return
+              }
+
+              setStatus('Disconnected. Tap Connect to reconnect.')
+              return
+            }
+
+            // Some firmware paths can miss FOREGROUND_ENTER after overlay dismissal.
+            inferForegroundFromInput()
+
+            if (tryToggleStandbyHud(event.sysEvent.eventType, 'sys')) {
+              return
+            }
+
+            if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+              handleDoubleClickNavigation(bridge)
+              return
+            }
+          }
+
+          if (event.listEvent) {
             inferForegroundFromInput()
             if (exitDialogPending) {
               appendEventLog('Lifecycle: exit dialog dismissed by user input')
@@ -371,64 +443,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               return
             }
             return
-          }
-
-          if (event.sysEvent) {
-            const eventType = event.sysEvent.eventType ?? 0
-            if (eventType === OsEventTypeList.FOREGROUND_ENTER_EVENT) {
-              appendEventLog('Lifecycle: foreground enter')
-              if (exitDialogPending) {
-                appendEventLog('Lifecycle: exit dialog transition (enter)')
-                scheduleExitDialogRecovery()
-                return
-              }
-
-              appInForeground = true
-              startRefreshTimer()
-              refreshDisplayIfActive()
-              return
-            }
-            if (eventType === OsEventTypeList.FOREGROUND_EXIT_EVENT) {
-              appendEventLog('Lifecycle: foreground exit')
-              if (exitDialogPending) {
-                appendEventLog('Lifecycle: exit dialog transition (exit)')
-                scheduleExitDialogRecovery()
-                return
-              }
-              appInForeground = false
-              stopRefreshTimer()
-              return
-            }
-            if (eventType === OsEventTypeList.ABNORMAL_EXIT_EVENT || eventType === OsEventTypeList.SYSTEM_EXIT_EVENT) {
-              appendEventLog(`Lifecycle: exit event=${String(eventType)}`)
-              const intentionalExit = exitDialogPending
-              appInForeground = false
-              exitDialogPending = false
-              clearExitDialogRecoveryTimer()
-              cleanupBridgeListeners()
-              resetRendererSession()
-              connected = false
-
-              if (intentionalExit) {
-                appendEventLog('Lifecycle: intentional exit confirmed')
-                setStatus('Exited by user')
-                return
-              }
-
-              setStatus('Disconnected. Tap Connect to reconnect.')
-              return
-            }
-
-            // Some firmware paths can miss FOREGROUND_ENTER after overlay dismissal.
-            inferForegroundFromInput()
-
-            if (tryToggleStandbyHud(event.sysEvent.eventType, 'sys')) {
-              return
-            }
-
-            if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-              handleDoubleClickNavigation(bridge)
-            }
           }
         } catch (err) {
           console.error('[bacpacer] event handler failed', err)

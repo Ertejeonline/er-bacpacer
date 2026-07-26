@@ -534,7 +534,10 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
     await vi.runAllTimersAsync()
 
     expect(setLocalStorage).toHaveBeenCalledTimes(1)
-    const [, payload] = setLocalStorage.mock.calls[0] as [string, string]
+    const firstCall = setLocalStorage.mock.calls[0]
+    expect(firstCall).toBeDefined()
+    const payload = firstCall?.[1]
+    expect(typeof payload).toBe('string')
     expect(JSON.parse(payload).bpm).toBe(100)
     expect(JSON.parse(payload).drinkMl).toBe(300)
   })
