@@ -105,6 +105,8 @@ const FOOD_PROFILE_BIOAVAILABILITY: Record<BacFoodProfile, number> = {
 const BAC_MODEL_ABSORPTION_MINUTES = 30
 const BAC_MODEL_BODY_WATER_FACTOR_MIN = 0.4
 const BAC_MODEL_BODY_WATER_FACTOR_MAX = 0.9
+const DRINK_PERCENT_MIN = 1
+const DRINK_PERCENT_MAX = 100
 
 const DEFAULT_BAC_SETTINGS: BacUserSettings = {
   metabolismLevel: 3,
@@ -172,7 +174,7 @@ function clampNumber(value: number, min: number, max: number): number {
 }
 
 function getPercentFraction(percent: number): number {
-  return percent > 1 ? percent / 100 : percent
+  return percent >= 1 ? percent / 100 : percent
 }
 
 function normalizeDrinkPreset(value: Partial<DrinkPreset> | undefined, fallbackId?: string): DrinkPreset {
@@ -181,7 +183,7 @@ function normalizeDrinkPreset(value: Partial<DrinkPreset> | undefined, fallbackI
       ? value.id.trim()
       : (fallbackId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
     ml: clampNumber(typeof value?.ml === 'number' ? value.ml : state.drinkMl, 0, 2000),
-    percent: clampNumber(typeof value?.percent === 'number' ? value.percent : state.drinkPercent, 0, 100),
+    percent: clampNumber(typeof value?.percent === 'number' ? value.percent : state.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
   }
 }
 
@@ -326,10 +328,10 @@ function toPersistedState(): PersistedState {
     bpm: clampNumber(state.bpm, 60, 200),
     pacerRunning: Boolean(state.pacerRunning),
     drinkMl: clampNumber(state.drinkMl, 0, 2000),
-    drinkPercent: clampNumber(state.drinkPercent, 0, 100),
+    drinkPercent: clampNumber(state.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
     drinkEntries: state.drinkEntries.slice(0, 500).map((entry) => ({
       ml: clampNumber(entry.ml, 0, 2000),
-      percent: clampNumber(entry.percent, 0, 100),
+      percent: clampNumber(entry.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
       timestampMs: entry.timestampMs,
       endTimestampMs: getDrinkEntryEndTimestampMs(entry),
       plannedEndTimestampMs: getDrinkEntryPlannedEndTimestampMs(entry),
@@ -412,7 +414,7 @@ function applyHydratedState(raw: string): void {
       state.drinkMl = clampNumber(parsed.drinkMl, 0, 2000)
     }
     if (typeof parsed.drinkPercent === 'number') {
-      state.drinkPercent = clampNumber(parsed.drinkPercent, 0, 100)
+      state.drinkPercent = clampNumber(parsed.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX)
     }
     if (Array.isArray(parsed.drinkEntries)) {
       const now = Date.now()
@@ -422,7 +424,9 @@ function applyHydratedState(raw: string): void {
         .map((entry) => {
           const candidate = entry as Partial<DrinkEntry> & { timeHHMM?: string }
           const ml = typeof candidate.ml === 'number' ? clampNumber(candidate.ml, 0, 2000) : state.drinkMl
-          const percent = typeof candidate.percent === 'number' ? clampNumber(candidate.percent, 0, 100) : state.drinkPercent
+          const percent = typeof candidate.percent === 'number'
+            ? clampNumber(candidate.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX)
+            : state.drinkPercent
           const timeHHMM = typeof candidate.timeHHMM === 'string' ? candidate.timeHHMM : '00:00'
           const timestampMs = typeof candidate.timestampMs === 'number' ? candidate.timestampMs : timestampFromHHMM(timeHHMM)
           const estimatedEnd = timestampMs + estimateDrinkDurationMs(ml, percent)
@@ -551,7 +555,7 @@ export function setDrinkMl(value: number): void {
 }
 
 export function setDrinkPercent(value: number): void {
-  state.drinkPercent = clampNumber(value, 0, 100)
+  state.drinkPercent = clampNumber(value, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX)
   savePersistedState()
 }
 
@@ -758,7 +762,7 @@ export function storeCurrentDrink(): DrinkEntry {
   const estimatedDurationMs = estimateDrinkDurationMs(state.drinkMl, state.drinkPercent)
   const entry: DrinkEntry = {
     ml: clampNumber(state.drinkMl, 0, 2000),
-    percent: clampNumber(state.drinkPercent, 0, 100),
+    percent: clampNumber(state.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
     timestampMs: now,
     endTimestampMs: now + estimatedDurationMs,
     plannedEndTimestampMs: now + estimatedDurationMs,
@@ -836,14 +840,15 @@ export function updateDrinkEntry(originalTimestampMs: number, nextEntry: DrinkEn
   }
 
   const currentEntry = state.drinkEntries[index]
+  const clampedPercent = clampNumber(nextEntry.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX)
   const endTimestampMs = typeof nextEntry.endTimestampMs === 'number'
     ? Math.max(nextEntry.timestampMs, nextEntry.endTimestampMs)
-    : (nextEntry.timestampMs + estimateDrinkDurationMs(nextEntry.ml, nextEntry.percent))
+    : (nextEntry.timestampMs + estimateDrinkDurationMs(nextEntry.ml, clampedPercent))
   const fallbackPlannedEndTimestampMs = getDrinkEntryPlannedEndTimestampMs(currentEntry)
 
   const updatedEntry: DrinkEntry = {
     ml: clampNumber(nextEntry.ml, 0, 2000),
-    percent: clampNumber(nextEntry.percent, 0, 100),
+    percent: clampedPercent,
     timestampMs: nextEntry.timestampMs,
     endTimestampMs,
     plannedEndTimestampMs: typeof nextEntry.plannedEndTimestampMs === 'number'

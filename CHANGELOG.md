@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.11] - 2026-07-26
+
+### Fixed
+- Enforced a minimum drink strength of `1%` across drink logging and persistence.
+- Decreasing `%` on glasses no longer goes below `1%`.
+- Presets now clamp alcohol percentage to `1%` minimum when added or updated.
+
+## [1.5.10] - 2026-07-26
+
+### Fixed
+- Corrected ABV normalization so `1` is interpreted as `1%` (not `100%`) when estimating next-drink timing.
+- Fixed incorrect long wait times for small low-ABV drinks (for example `25 ml @ 1%`).
+
 ## [1.5.7] - 2026-07-24
 
 ### Added

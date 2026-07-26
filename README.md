@@ -85,6 +85,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 - Persisted state key: `bacpacer.persisted.v1`
 - Drink history and saved presets are persisted via bridge storage (with browser localStorage fallback).
 - The top-right standby countdown is reconstructed from the persisted drink log, including carry-over from interrupted drinks, so reconnects or crashes do not reset the remaining time debt.
+- Drinks and presets enforce a minimum strength of `1%` ABV. Values below `1` are clamped to `1`.
 
 ## Stability & Connection Resilience
 

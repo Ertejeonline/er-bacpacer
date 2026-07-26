@@ -80,7 +80,7 @@ async function boot() {
   }
 
   const estimateDrinkDurationMs = (ml: number, percent: number) => {
-    const fraction = percent > 1 ? percent / 100 : percent
+    const fraction = percent >= 1 ? percent / 100 : percent
     return Math.max(0, ((ml * fraction) / 0.5) * 60_000)
   }
 
@@ -669,14 +669,16 @@ async function boot() {
       return
     }
 
+    const sanitizedPercent = Math.max(1, percent)
+
     if (editingPresetId) {
-      const updated = actions.updateDrinkPreset?.(editingPresetId, { ml, percent })
+      const updated = actions.updateDrinkPreset?.(editingPresetId, { ml, percent: sanitizedPercent })
       if (!updated) {
         updateStatus('Preset update failed')
         return
       }
     } else {
-      const created = actions.addDrinkPreset?.({ ml, percent })
+      const created = actions.addDrinkPreset?.({ ml, percent: sanitizedPercent })
       if (!created) {
         updateStatus('Preset add failed')
         return

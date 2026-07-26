@@ -66,6 +66,7 @@ describe('g2/state', () => {
 
   it('calculates drink duration from percent values', () => {
     expect(estimateDrinkDurationMs(100, 5)).toBe(600000)
+    expect(estimateDrinkDurationMs(25, 1)).toBe(30000)
     expect(estimateDrinkDurationMs(100, 0.05)).toBe(600000)
   })
 
@@ -249,6 +250,16 @@ describe('g2/state', () => {
     expect(getDrinkPresets()).toEqual([])
   })
 
+  it('clamps preset percent to at least 1 when adding and updating', () => {
+    const created = addDrinkPreset({ ml: 250, percent: 0.5 })
+    expect(created.percent).toBe(1)
+    expect(getDrinkPresets()[0]?.percent).toBe(1)
+
+    const updated = updateDrinkPreset(created.id, { ml: 250, percent: -4 })
+    expect(updated).toBe(true)
+    expect(getDrinkPresets()[0]?.percent).toBe(1)
+  })
+
   it('clamps bpm, ml and percent values', () => {
     setBpm(10)
     setDrinkMl(-50)
@@ -264,7 +275,7 @@ describe('g2/state', () => {
 
     expect(state.bpm).toBe(200)
     expect(state.drinkMl).toBe(2000)
-    expect(state.drinkPercent).toBe(0)
+    expect(state.drinkPercent).toBe(1)
   })
 
   it('updates menu-related state fields', () => {
@@ -362,13 +373,13 @@ describe('g2/state', () => {
     expect(state.bpm).toBe(60)
     expect(state.pacerRunning).toBe(true)
     expect(state.drinkMl).toBe(2000)
-    expect(state.drinkPercent).toBe(0)
+    expect(state.drinkPercent).toBe(1)
     expect(state.drinkEntries).toHaveLength(1)
     expect(state.drinkEntries[0]?.ml).toBe(333)
     expect(state.drinkPresets).toHaveLength(2)
     expect(state.drinkPresets[0]).toEqual({ id: 'wine', ml: 150, percent: 13.5 })
     expect(state.drinkPresets[1]?.ml).toBe(2000)
-    expect(state.drinkPresets[1]?.percent).toBe(0)
+    expect(state.drinkPresets[1]?.percent).toBe(1)
     expect(state.bacSettings.weightKg).toBe(250)
     expect(state.bacSettings.dateOfBirth).toBe('2010-01-01')
     expect(state.bacSettings.ageYears).toBe(18)
