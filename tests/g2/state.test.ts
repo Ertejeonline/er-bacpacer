@@ -188,6 +188,37 @@ describe('g2/state', () => {
     })
   })
 
+  it('does not resurrect consumed carry-over when logging a new drink after carry reaches zero', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+
+    setDrinkMl(50)
+    setDrinkPercent(1)
+
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink()
+
+    nowSpy.mockReturnValue(1)
+    storeCurrentDrink()
+
+    // First minute drink finishes and carry-over begins.
+    expect(getStandbyCountdown(60_001)).toEqual({
+      activeMinutes: 0,
+      carryOverMinutes: 1,
+    })
+
+    // Carry-over has been fully consumed and display should be blank.
+    expect(getStandbyCountdown(120_001)).toBeNull()
+
+    // Logging a new 1-minute drink after carry is consumed should not show +1.
+    nowSpy.mockReturnValue(120_001)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(120_001)).toEqual({
+      activeMinutes: 1,
+      carryOverMinutes: 0,
+    })
+  })
+
   it('returns zero BAC estimate with no entries', () => {
     const estimate = getBacEstimateAt(1000000)
     expect(estimate.bacGdl).toBe(0)

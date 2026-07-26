@@ -399,19 +399,6 @@ function getCarryOverRemainingMs(nowMs: number, activeRemainingMs: number): numb
   return Math.max(0, baseCarryOverMs - elapsedMs)
 }
 
-function ensureStandbyCarryInitialized(nowMs: number, activeRemainingMs: number): void {
-  if (state.standbyCarryOverMs > 0) return
-
-  const derivedCarryOverMs = getInterruptedCarryMsFromEntries(state.drinkEntries)
-  if (derivedCarryOverMs <= 0) return
-
-  state.standbyCarryOverMs = derivedCarryOverMs
-  const latestActualEndMs = getLatestActualEndMsFromEntries(state.drinkEntries)
-  state.standbyCarryUpdatedAtMs = activeRemainingMs > 0
-    ? nowMs
-    : (latestActualEndMs ?? nowMs)
-}
-
 function refreshCarryOverPersistenceWhileIdle(nowMs: number, activeRemainingMs: number): void {
   if (activeRemainingMs > 0) return
   if (state.standbyCarryOverMs <= 0) {
@@ -877,7 +864,6 @@ export function getBacEstimateWithSettings(overrideSettings: Partial<BacUserSett
 
 export function getStandbyCountdown(nowMs: number = Date.now()): StandbyCountdown | null {
   const activeRemainingMs = getActiveRemainingMsFromEntries(state.drinkEntries, nowMs)
-  ensureStandbyCarryInitialized(nowMs, activeRemainingMs)
   refreshCarryOverPersistenceWhileIdle(nowMs, activeRemainingMs)
   const carryOverMs = getCarryOverRemainingMs(nowMs, activeRemainingMs)
 

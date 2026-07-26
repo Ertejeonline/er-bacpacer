@@ -218,7 +218,8 @@ describe('g2/renderer', () => {
   it('shows split top-right countdown when an active drink carries interrupted time', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
-    vi.spyOn(Date, 'now').mockReturnValue(25 * 60_000)
+    const now = 25 * 60_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
 
     state.drinkEntries = [
       {
@@ -243,6 +244,8 @@ describe('g2/renderer', () => {
         plannedEndTimestampMs: 20 * 60_000,
       },
     ]
+    state.standbyCarryOverMs = 15 * 60_000
+    state.standbyCarryUpdatedAtMs = now
 
     await updateMenuDisplay()
 
@@ -256,7 +259,8 @@ describe('g2/renderer', () => {
   it('shows plus-prefixed carry-over when active countdown is finished', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
-    vi.spyOn(Date, 'now').mockReturnValue(30 * 60_000)
+    const now = 30 * 60_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
 
     state.drinkEntries = [
       {
@@ -267,6 +271,8 @@ describe('g2/renderer', () => {
         plannedEndTimestampMs: 42 * 60_000,
       },
     ]
+    state.standbyCarryOverMs = 12 * 60_000
+    state.standbyCarryUpdatedAtMs = now
 
     await updateMenuDisplay()
 
