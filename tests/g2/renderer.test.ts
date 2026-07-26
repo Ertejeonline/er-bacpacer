@@ -251,6 +251,30 @@ describe('g2/renderer', () => {
     expect(topRightUpdate?.content).toBe('20 +15')
   })
 
+  it('shows plus-prefixed carry-over when active countdown is finished', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+    vi.spyOn(Date, 'now').mockReturnValue(30 * 60_000)
+
+    state.drinkEntries = [
+      {
+        ml: 100,
+        percent: 10,
+        timestampMs: 25 * 60_000,
+        endTimestampMs: 30 * 60_000,
+        plannedEndTimestampMs: 42 * 60_000,
+      },
+    ]
+
+    await updateMenuDisplay()
+
+    const topRightUpdate = bridge.textContainerUpgrade.mock.calls
+      .map((args) => args[0] as { containerID?: number; content?: string })
+      .find((payload) => payload.containerID === 2)
+
+    expect(topRightUpdate?.content).toBe('+ 12')
+  })
+
   it('shows current time on top-left in standby detail and hides it with standby hud', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)

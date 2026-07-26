@@ -134,6 +134,9 @@ function getTopRightContent(): string {
   if (countdown.activeMinutes > 0 && countdown.carryOverMinutes > 0) {
     return `${countdown.activeMinutes} +${countdown.carryOverMinutes}`
   }
+  if (countdown.carryOverMinutes > 0) {
+    return `+ ${countdown.carryOverMinutes}`
+  }
 
   const remainingMinutes = countdown.activeMinutes > 0
     ? countdown.activeMinutes

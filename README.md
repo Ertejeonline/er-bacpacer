@@ -17,6 +17,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - confirm `Add drink` to store an entry
   - each entry has start and computed end time
   - if a new drink is logged before the previous one finishes, the interrupted remainder is carried forward in the glasses HUD instead of being lost
+  - once active countdown reaches zero, remaining carry-over is still shown with a leading plus (for example `+ 12`)
 - BAC estimate model:
   - tracks current BAC and peak BAC
   - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
