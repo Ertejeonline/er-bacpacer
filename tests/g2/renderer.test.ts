@@ -51,6 +51,8 @@ describe('g2/renderer', () => {
     state.currentMenuItem = 'standBy'
     state.focusedMenuItem = 'standBy'
     state.drinkEntries = []
+    state.standbyCarryOverMs = 0
+    state.standbyCarryUpdatedAtMs = null
   })
 
   it('maps main and add-drink menu indices', () => {
@@ -273,6 +275,25 @@ describe('g2/renderer', () => {
       .find((payload) => payload.containerID === 2)
 
     expect(topRightUpdate?.content).toBe('+ 12')
+  })
+
+  it('shows decremented plus-prefixed carry-over while carry-over countdown is running', async () => {
+    const bridge = makeBridgeMocks()
+    setBridge(bridge as never)
+    const now = 30 * 60_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+
+    state.drinkEntries = []
+    state.standbyCarryOverMs = 5 * 60_000
+    state.standbyCarryUpdatedAtMs = now - (2 * 60_000)
+
+    await updateMenuDisplay()
+
+    const topRightUpdate = bridge.textContainerUpgrade.mock.calls
+      .map((args) => args[0] as { containerID?: number; content?: string })
+      .find((payload) => payload.containerID === 2)
+
+    expect(topRightUpdate?.content).toBe('+ 3')
   })
 
   it('shows current time on top-left in standby detail and hides it with standby hud', async () => {

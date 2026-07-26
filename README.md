@@ -17,7 +17,8 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - confirm `Add drink` to store an entry
   - each entry has start and computed end time
   - if a new drink is logged before the previous one finishes, the interrupted remainder is carried forward in the glasses HUD instead of being lost
-  - once active countdown reaches zero, remaining carry-over is still shown with a leading plus (for example `+ 12`)
+  - once active countdown reaches zero, the carry-over immediately becomes a live countdown with a leading plus (for example `+ 12`) and decrements until it reaches zero
+  - if another drink is logged while carry-over is counting down, the current carry-over remainder is preserved and displayed alongside the new active timer (for example `42 +8`)
 - BAC estimate model:
   - tracks current BAC and peak BAC
   - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
@@ -84,7 +85,8 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 
 - Persisted state key: `bacpacer.persisted.v1`
 - Drink history and saved presets are persisted via bridge storage (with browser localStorage fallback).
-- The top-right standby countdown is reconstructed from the persisted drink log, including carry-over from interrupted drinks, so reconnects or crashes do not reset the remaining time debt.
+- The top-right standby countdown persists interrupted carry-over separately and decrements it in real time once active drink time ends.
+- Carry-over countdown progress is persisted at minute boundaries so reconnects or crashes resume with the correct remaining `+` minutes.
 - Drinks and presets enforce a minimum strength of `1%` ABV. Values below `1` are clamped to `1`.
 
 ## Stability & Connection Resilience

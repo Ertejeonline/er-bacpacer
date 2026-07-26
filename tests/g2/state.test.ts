@@ -49,6 +49,8 @@ function resetState(): void {
   state.drinkEntries = []
   state.drinkPresets = []
   state.bacSettings = { ...DEFAULT_BAC_SETTINGS }
+  state.standbyCarryOverMs = 0
+  state.standbyCarryUpdatedAtMs = null
   setBridge({
     getLocalStorage: async () => null,
     setLocalStorage: async () => undefined,
@@ -134,6 +136,55 @@ describe('g2/state', () => {
     expect(getStandbyCountdown(25 * 60_000)).toEqual({
       activeMinutes: 20,
       carryOverMinutes: 15,
+    })
+  })
+
+  it('starts consuming carry-over when active countdown reaches zero and clears at zero', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+
+    setDrinkMl(100)
+    setDrinkPercent(10)
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink()
+
+    nowSpy.mockReturnValue(10 * 60_000)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(30 * 60_000)).toEqual({
+      activeMinutes: 0,
+      carryOverMinutes: 10,
+    })
+
+    expect(getStandbyCountdown(32 * 60_000)).toEqual({
+      activeMinutes: 0,
+      carryOverMinutes: 8,
+    })
+
+    expect(getStandbyCountdown(40 * 60_000)).toBeNull()
+  })
+
+  it('keeps the remaining carry-over when a new drink is logged during carry-over countdown', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+
+    setDrinkMl(100)
+    setDrinkPercent(10)
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink()
+
+    nowSpy.mockReturnValue(10 * 60_000)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(32 * 60_000)).toEqual({
+      activeMinutes: 0,
+      carryOverMinutes: 8,
+    })
+
+    nowSpy.mockReturnValue(32 * 60_000)
+    storeCurrentDrink()
+
+    expect(getStandbyCountdown(32 * 60_000)).toEqual({
+      activeMinutes: 20,
+      carryOverMinutes: 8,
     })
   })
 
@@ -428,6 +479,29 @@ describe('g2/state', () => {
     expect(getStandbyCountdown(now)).toEqual({
       activeMinutes: 5,
       carryOverMinutes: 10,
+    })
+  })
+
+  it('restores persisted carry-over countdown and keeps decrementing after reload time', async () => {
+    const now = 30 * 60 * 60 * 1000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+
+    const getLocalStorage = vi.fn(async () => JSON.stringify({
+      standbyCarryOverMs: 5 * 60_000,
+      standbyCarryUpdatedAtMs: now - (2 * 60_000),
+      drinkEntries: [],
+    }))
+
+    setBridge({
+      getLocalStorage,
+      setLocalStorage: vi.fn(async () => undefined),
+    } as never)
+
+    await loadPersistedState()
+
+    expect(getStandbyCountdown(now)).toEqual({
+      activeMinutes: 0,
+      carryOverMinutes: 3,
     })
   })
 
