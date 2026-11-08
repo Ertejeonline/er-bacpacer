@@ -27,6 +27,8 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - supports food profile, metabolism slider, and profile inputs
 - Companion web UI:
   - connect to bridge
+  - log a drink from the phone (ml and % with -/+ buttons, starts from the default drink)
+  - tap a preset to load it as the default drink
   - view event log
   - reset all drinks
   - open/edit/delete drink entries

@@ -441,3 +441,52 @@ select.field-input {
 #bacSoberAtPreview {
   color: var(--color-text);
 }
+
+/* Log a drink pop-up -/+ steppers, loadable preset rows */
+.stepper {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.stepper-btn {
+  width: 48px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.stepper-input {
+  text-align: center;
+  font-size: 18px;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.stepper-input::-webkit-outer-spin-button,
+.stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.preset-row--loadable {
+  cursor: pointer;
+}
+
+.preset-row--loadable:hover,
+.preset-row--loadable:focus-visible {
+  background: var(--color-surface-secondary);
+  outline: none;
+}
+
+.presets-current-default {
+  margin: 8px 0 0;
+  color: var(--color-text-dim);
+}
+
+.field-error {
+  margin: 12px 0 0;
+  color: var(--color-negative);
+  font-size: 14px;
+}

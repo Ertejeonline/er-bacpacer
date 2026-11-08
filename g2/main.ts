@@ -555,6 +555,36 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
 
     getDrinkPresets: () => getDrinkPresets(),
 
+    getDrinkDefaults: () => ({ ml: state.drinkMl, percent: state.drinkPercent }),
+
+    logDrink: ({ ml, percent }) => {
+      // Same as "Add drink" on the glasses: the values become the new defaults,
+      // the drink is stored, and the glasses switch to Stand by.
+      setDrinkMl(ml)
+      setDrinkPercent(percent)
+      const entry = storeCurrentDrink()
+      setAddDrinkSubmenuVisible(false)
+      setMenuItem('standBy')
+      appendEventLog(`Drink stored from phone UI: ${entry.ml} ml @ ${entry.percent}% (${formatDrinkEntryTime(entry.timestampMs)})`)
+      setStatus('Drink logged')
+      refreshDisplayIfActive()
+      return entry
+    },
+
+    loadDrinkPreset: (id) => {
+      const preset = state.drinkPresets.find((candidate) => candidate.id === id)
+      if (!preset) return false
+
+      // Like "Load preset" on the glasses, without changing the glasses screen:
+      // the preset becomes the default drink for the next "Log a drink".
+      setDrinkMl(preset.ml)
+      setDrinkPercent(preset.percent)
+      appendEventLog(`Preset loaded from phone UI: id=${preset.id} ml=${preset.ml} abv=${preset.percent}`)
+      setStatus('Preset loaded')
+      refreshDisplayIfActive()
+      return true
+    },
+
     addDrinkPreset: (preset) => {
       const created = addDrinkPreset(preset)
       setStatus('Preset added')

@@ -1,5 +1,14 @@
 import type { AppModule } from '../_shared/app-types'
 import { METABOLISM_LEVEL_LABELS } from '../_shared/app-types'
+import {
+  DRINK_ML_LIMITS,
+  DRINK_PERCENT_LIMITS,
+  formatDrinkMl,
+  formatDrinkPercent,
+  parseDrinkInput,
+  stepDrinkValue,
+  type DrinkFieldLimits,
+} from './drink-input'
 
 function updateStatus(text: string) {
   console.log(`[ui] ${text}`)
@@ -54,6 +63,23 @@ async function boot() {
   const presetPercentInput = document.getElementById('presetPercentInput') as HTMLInputElement | null
   const savePresetBtn = document.getElementById('savePresetBtn') as HTMLButtonElement | null
   const cancelPresetBtn = document.getElementById('cancelPresetBtn') as HTMLButtonElement | null
+  const logDrinkBtn = document.getElementById('logDrinkBtn') as HTMLButtonElement | null
+  const logDrinkModal = document.getElementById('logDrinkModal')
+  const logDrinkMlInput = document.getElementById('logDrinkMlInput') as HTMLInputElement | null
+  const logDrinkPercentInput = document.getElementById('logDrinkPercentInput') as HTMLInputElement | null
+  const logDrinkMlMinusBtn = document.getElementById('logDrinkMlMinusBtn') as HTMLButtonElement | null
+  const logDrinkMlPlusBtn = document.getElementById('logDrinkMlPlusBtn') as HTMLButtonElement | null
+  const logDrinkPercentMinusBtn = document.getElementById('logDrinkPercentMinusBtn') as HTMLButtonElement | null
+  const logDrinkPercentPlusBtn = document.getElementById('logDrinkPercentPlusBtn') as HTMLButtonElement | null
+  const presetsCurrentDefault = document.getElementById('presetsCurrentDefault')
+  const confirmLoadPresetModal = document.getElementById('confirmLoadPresetModal')
+  const confirmLoadPresetText = document.getElementById('confirmLoadPresetText')
+  const confirmLoadPresetBtn = document.getElementById('confirmLoadPresetBtn') as HTMLButtonElement | null
+  const cancelLoadPresetBtn = document.getElementById('cancelLoadPresetBtn') as HTMLButtonElement | null
+  let pendingLoadPresetId: string | null = null
+  const logDrinkError = document.getElementById('logDrinkError')
+  const confirmLogDrinkBtn = document.getElementById('confirmLogDrinkBtn') as HTMLButtonElement | null
+  const cancelLogDrinkBtn = document.getElementById('cancelLogDrinkBtn') as HTMLButtonElement | null
 
   document.title = `${app.name} – Even G2`
   updateStatus(app.initialStatus ?? `${app.name} app ready`)
@@ -366,6 +392,20 @@ async function boot() {
     for (const preset of presets) {
       const row = document.createElement('div')
       row.className = 'preset-row'
+      if (actions.loadDrinkPreset) {
+        row.classList.add('preset-row--loadable')
+        row.tabIndex = 0
+        row.setAttribute('role', 'button')
+        row.setAttribute('aria-label', `Load preset ${preset.ml} ml at ${preset.percent.toFixed(1)}%`)
+        row.addEventListener('click', () => {
+          openLoadPresetConfirm(preset.id)
+        })
+        row.addEventListener('keydown', (event) => {
+          if (event.target !== row || (event.key !== 'Enter' && event.key !== ' ')) return
+          event.preventDefault()
+          openLoadPresetConfirm(preset.id)
+        })
+      }
 
       const copy = document.createElement('div')
       copy.className = 'preset-copy'
@@ -387,7 +427,8 @@ async function boot() {
       const editBtn = document.createElement('button')
       editBtn.type = 'button'
       editBtn.textContent = 'Edit'
-      editBtn.addEventListener('click', () => {
+      editBtn.addEventListener('click', (event) => {
+        event.stopPropagation()
         openPresetEditor(preset.id)
       })
 
@@ -395,7 +436,8 @@ async function boot() {
       deleteBtn.type = 'button'
       deleteBtn.className = 'danger-btn'
       deleteBtn.textContent = 'Delete'
-      deleteBtn.addEventListener('click', () => {
+      deleteBtn.addEventListener('click', (event) => {
+        event.stopPropagation()
         const removed = actions.removeDrinkPreset?.(preset.id)
         if (!removed) {
           updateStatus('Preset delete failed')
@@ -416,10 +458,36 @@ async function boot() {
     }
   }
 
+  const renderPresetsCurrentDefault = () => {
+    if (!presetsCurrentDefault) return
+    const defaults = actions.getDrinkDefaults?.()
+    presetsCurrentDefault.textContent = defaults
+      ? `Current default: ${formatDrinkMl(defaults.ml)} ml · ${formatDrinkPercent(defaults.percent)}%`
+      : ''
+  }
+
+  const openLoadPresetConfirm = (presetId: string) => {
+    const preset = actions.getDrinkPresets?.().find((candidate) => candidate.id === presetId)
+    if (!preset || !confirmLoadPresetModal) return
+
+    pendingLoadPresetId = preset.id
+    if (confirmLoadPresetText) {
+      confirmLoadPresetText.textContent =
+        `${formatDrinkMl(preset.ml)} ml · ${formatDrinkPercent(preset.percent)}% will become your default drink on the phone and the glasses.`
+    }
+    confirmLoadPresetModal.classList.remove('hidden')
+  }
+
+  const closeLoadPresetConfirm = () => {
+    pendingLoadPresetId = null
+    confirmLoadPresetModal?.classList.add('hidden')
+  }
+
   const openPresetsModal = () => {
     if (!presetsModal || !actions.getDrinkPresets) return
     closePresetEditor()
     renderPresets()
+    renderPresetsCurrentDefault()
     presetsModal.classList.remove('hidden')
   }
 
@@ -692,6 +760,107 @@ async function boot() {
   presetsModal?.addEventListener('click', (event) => {
     if (event.target === presetsModal) {
       closePresetsModal()
+    }
+  })
+
+  // --- Log a drink from the phone -------------------------------------------
+  const showLogDrinkError = (message: string | null) => {
+    if (!logDrinkError) return
+    logDrinkError.textContent = message ?? ''
+    logDrinkError.classList.toggle('hidden', !message)
+  }
+
+  const openLogDrinkModal = () => {
+    if (!logDrinkModal || !logDrinkMlInput || !logDrinkPercentInput || !actions.getDrinkDefaults) return
+
+    // Start from the same defaults the glasses use for "Add drink".
+    const defaults = actions.getDrinkDefaults()
+    logDrinkMlInput.value = formatDrinkMl(defaults.ml)
+    logDrinkPercentInput.value = formatDrinkPercent(defaults.percent)
+    showLogDrinkError(null)
+    logDrinkModal.classList.remove('hidden')
+  }
+
+  const closeLogDrinkModal = () => {
+    logDrinkModal?.classList.add('hidden')
+    showLogDrinkError(null)
+  }
+
+  const bindStepper = (
+    input: HTMLInputElement | null,
+    minusBtn: HTMLButtonElement | null,
+    plusBtn: HTMLButtonElement | null,
+    limits: DrinkFieldLimits,
+    fallback: () => number,
+    format: (value: number) => string,
+  ) => {
+    const step = (direction: -1 | 1) => {
+      if (!input) return
+      input.value = format(stepDrinkValue(input.value, direction, limits, fallback()))
+      showLogDrinkError(null)
+    }
+    minusBtn?.addEventListener('click', () => step(-1))
+    plusBtn?.addEventListener('click', () => step(1))
+  }
+
+  const confirmLogDrink = () => {
+    if (!logDrinkMlInput || !logDrinkPercentInput || !actions.logDrink) return
+
+    const parsed = parseDrinkInput(logDrinkMlInput.value, logDrinkPercentInput.value)
+    if (!parsed.ok) {
+      showLogDrinkError(parsed.message)
+      return
+    }
+
+    actions.logDrink({ ml: parsed.ml, percent: parsed.percent })
+    closeLogDrinkModal()
+  }
+
+  if (actions.logDrink && actions.getDrinkDefaults && logDrinkBtn) {
+    logDrinkBtn.style.display = ''
+    logDrinkBtn.addEventListener('click', openLogDrinkModal)
+  }
+
+  bindStepper(
+    logDrinkMlInput, logDrinkMlMinusBtn, logDrinkMlPlusBtn, DRINK_ML_LIMITS,
+    () => actions.getDrinkDefaults?.().ml ?? DRINK_ML_LIMITS.min, formatDrinkMl,
+  )
+  bindStepper(
+    logDrinkPercentInput, logDrinkPercentMinusBtn, logDrinkPercentPlusBtn, DRINK_PERCENT_LIMITS,
+    () => actions.getDrinkDefaults?.().percent ?? DRINK_PERCENT_LIMITS.min, formatDrinkPercent,
+  )
+
+  for (const input of [logDrinkMlInput, logDrinkPercentInput]) {
+    input?.addEventListener('input', () => showLogDrinkError(null))
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') confirmLogDrink()
+    })
+  }
+
+  confirmLogDrinkBtn?.addEventListener('click', confirmLogDrink)
+  cancelLogDrinkBtn?.addEventListener('click', closeLogDrinkModal)
+  logDrinkModal?.addEventListener('click', (event) => {
+    if (event.target === logDrinkModal) {
+      closeLogDrinkModal()
+    }
+  })
+
+  // --- Load a preset as the default drink ------------------------------------
+  confirmLoadPresetBtn?.addEventListener('click', () => {
+    if (!pendingLoadPresetId || !actions.loadDrinkPreset) return
+    const loaded = actions.loadDrinkPreset(pendingLoadPresetId)
+    closeLoadPresetConfirm()
+    if (!loaded) {
+      updateStatus('Preset load failed')
+      renderPresets()
+      return
+    }
+    renderPresetsCurrentDefault()
+  })
+  cancelLoadPresetBtn?.addEventListener('click', closeLoadPresetConfirm)
+  confirmLoadPresetModal?.addEventListener('click', (event) => {
+    if (event.target === confirmLoadPresetModal) {
+      closeLoadPresetConfirm()
     }
   })
 
