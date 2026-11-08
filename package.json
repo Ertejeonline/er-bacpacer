@@ -1,13 +1,13 @@
 {
   "name": "er-bacpacer",
-  "version": "1.5.13",
+  "version": "1.5.14",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
     "preview": "vite preview",
     "qr": "evenhub qr -u http://192.168.1.45:5173 --http",
     "simulator": "evenhub-simulator http://localhost:5173",
-    "pack": "npm run build && evenhub pack app.json dist -o bacpacer.ehpk",
+    "pack": "npm run build && evenhub pack app.json dist -o bacpacer.ehpk --sdk-ver 0.0.16",
     "test": "vitest run",
     "test:watch": "vitest"
   },

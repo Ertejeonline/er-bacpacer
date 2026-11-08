@@ -1,6 +1,7 @@
 import { waitForEvenAppBridge, OsEventTypeList, DeviceConnectType } from '@evenrealities/even_hub_sdk'
 import type { SetStatus, AppActions } from '../_shared/app-types'
 import { appendEventLog } from '../_shared/log'
+import { createForegroundTracker } from '../_shared/foreground-tracker'
 import { initApp, updateDisplay } from './app'
 import {
   addDrinkPreset,
@@ -58,6 +59,9 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let lastStandbyHudToggleAtMs = 0
   let displayRefreshQueued = false
   let teardownRegistered = false
+  // Opening and closing the system contextual menu also fires
+  // FOREGROUND_ENTER/EXIT while Bacpacer stays on screen; see foreground-tracker.
+  const foreground = createForegroundTracker()
 
   const stopRefreshTimer = () => {
     if (refreshTimerId !== null) {
@@ -191,6 +195,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
 
   const cleanupBridgeListeners = () => {
     flushPersistedState()
+    foreground.reset()
 
     const unsubEvent = unsubscribeEvenHubEvent
     const unsubDevice = unsubscribeDeviceStatus
@@ -254,6 +259,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
         refreshDisplayIfActive()
       } else {
         appendEventLog('Lifecycle: visibilitychange hidden')
+        foreground.reset()
         appInForeground = false
         stopRefreshTimer()
         flushPersistedState()
@@ -295,6 +301,11 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
                 return
               }
 
+              if (foreground.enter(appInForeground) === 'overlay-opened') {
+                appendEventLog('Lifecycle: system overlay opened')
+                return
+              }
+
               appInForeground = true
               startRefreshTimer()
               refreshDisplayIfActive()
@@ -305,6 +316,10 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               if (exitDialogPending) {
                 appendEventLog('Lifecycle: exit dialog transition (exit)')
                 scheduleExitDialogRecovery()
+                return
+              }
+              if (foreground.exit(appInForeground) === 'overlay-closed') {
+                appendEventLog('Lifecycle: system overlay closed (still in foreground)')
                 return
               }
               appInForeground = false

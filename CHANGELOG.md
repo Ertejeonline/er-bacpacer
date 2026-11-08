@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.14] - 2026-11-08
+
+### Fixed
+- Countdown and BAC display no longer stop refreshing after the glasses system menu (tap, then long-press) is opened and closed. The menu fires foreground enter/exit events while Bacpacer stays on screen; these are now told apart from a real switch to another app.
+
+### Changed
+- Updated to Even Hub SDK 0.0.16, CLI 0.2.0 and Vitest 5. Requires Even App 2.2.10 or later.
+- `app.json` now declares `min_sdk_version` 0.0.16 and `min_app_version` 2.2.10; `npm run pack` passes `--sdk-ver 0.0.16`.
+- Added the Even Hub simulator as a dev dependency.
+
 ## [1.5.13] - 2026-07-26
 
 ### Fixed
