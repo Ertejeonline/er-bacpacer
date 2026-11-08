@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-11-08
+
+### Fixed
+- Deleting a drink from the phone now removes the carry-over time it created. Previously, logging a second drink while the first was still running and then deleting the first left its time on the counter (for example `47 +35` stayed after deleting).
+- Editing a drink's end time from the phone now updates the carry-over to match. Previously the counter kept the old carry-over.
+
 ## [1.6.0] - 2026-11-08
 
 ### Added

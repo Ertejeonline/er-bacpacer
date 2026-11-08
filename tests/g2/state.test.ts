@@ -303,6 +303,65 @@ describe('g2/state', () => {
     expect(state.drinkEntries[0]?.endTimestampMs).toBe(3000)
   })
 
+  it('deleting the first of two back-to-back drinks removes its carry-over', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+    setDrinkMl(100)
+    setDrinkPercent(5) // 100 ml at 5% = 10 min
+
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink() // A: 10 min
+
+    nowSpy.mockReturnValue(5 * 60_000)
+    const second = storeCurrentDrink() // B: 10 min, A is cut short and owes 5 min
+
+    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 5 })
+
+    // Delete the first drink from the phone.
+    expect(removeDrinkEntry(0)).toBe(true)
+    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
+
+    // The second drink still counts down normally.
+    expect(state.drinkEntries.map((entry) => entry.timestampMs)).toEqual([second.timestampMs])
+    expect(getStandbyCountdown(10 * 60_000)).toEqual({ activeMinutes: 5, carryOverMinutes: 0 })
+  })
+
+  it('editing the end time of an interrupted drink updates its carry-over', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+    setDrinkMl(100)
+    setDrinkPercent(5) // 10 min
+
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink() // A
+    nowSpy.mockReturnValue(5 * 60_000)
+    storeCurrentDrink() // B; A is cut at 5 min and owes 5 min
+
+    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 5 })
+
+    // End moved to 8 min: owes 2.
+    expect(updateDrinkEntry(0, { timestampMs: 0, endTimestampMs: 8 * 60_000, ml: 100, percent: 5 })).toBe(true)
+    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 2 })
+
+    // End restored to the planned 10 min: owes nothing.
+    expect(updateDrinkEntry(0, { timestampMs: 0, endTimestampMs: 10 * 60_000, ml: 100, percent: 5 })).toBe(true)
+    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
+  })
+
+  it('editing a drink that owes nothing leaves the carry-over unchanged', () => {
+    const nowSpy = vi.spyOn(Date, 'now')
+    setDrinkMl(100)
+    setDrinkPercent(5)
+
+    nowSpy.mockReturnValue(0)
+    storeCurrentDrink()
+    nowSpy.mockReturnValue(5 * 60_000)
+    storeCurrentDrink() // A owes 5; B (index 0) owes nothing
+
+    // Change only B's amount; its end time stays as stored.
+    const b = state.drinkEntries[0]
+    expect(updateDrinkEntry(b.timestampMs, { ...b, ml: 150 })).toBe(true)
+    expect(getStandbyCountdown(5 * 60_000).carryOverMinutes).toBe(5)
+  })
+
   it('removes and clears drink entries', () => {
     state.drinkEntries = [
       { ml: 100, percent: 5, timestampMs: 1000, endTimestampMs: 2000 },
