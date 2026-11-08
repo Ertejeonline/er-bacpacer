@@ -12,18 +12,19 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@evenrealities/even_hub_sdk": "^0.0.12",
+    "@evenrealities/even_hub_sdk": "^0.0.16",
     "even-toolkit": "^1.7.7",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@evenrealities/evenhub-cli": "^0.1.13",
+    "@evenrealities/evenhub-cli": "^0.2.0",
+    "@evenrealities/evenhub-simulator": "^0.9.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "@evenrealities/evenhub-cli": {
