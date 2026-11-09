@@ -81,8 +81,6 @@ type PersistedState = {
   drinkEntries: DrinkEntry[]
   drinkPresets: DrinkPreset[]
   bacSettings: BacUserSettings
-  standbyCarryOverMs: number
-  standbyCarryUpdatedAtMs: number | null
 }
 
 const BAC_SETTINGS_BOUNDS = {
@@ -128,8 +126,6 @@ const DEFAULT_PERSISTED_STATE: PersistedState = {
   drinkEntries: [],
   drinkPresets: [],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
-  standbyCarryOverMs: 0,
-  standbyCarryUpdatedAtMs: null,
 }
 
 export const state = {
@@ -145,8 +141,6 @@ export const state = {
   drinkEntries: [...DEFAULT_PERSISTED_STATE.drinkEntries],
   drinkPresets: [...DEFAULT_PERSISTED_STATE.drinkPresets],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
-  standbyCarryOverMs: DEFAULT_PERSISTED_STATE.standbyCarryOverMs,
-  standbyCarryUpdatedAtMs: DEFAULT_PERSISTED_STATE.standbyCarryUpdatedAtMs,
 }
 
 let _bridge: EvenAppBridge | null = null
@@ -330,7 +324,6 @@ function normalizeBacSettings(value: Partial<BacUserSettings> | undefined): BacU
 const DRINK_ENTRY_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function toPersistedState(): PersistedState {
-  const standbyCarryOverMs = Math.max(0, Math.round(state.standbyCarryOverMs))
   return {
     bpm: clampNumber(state.bpm, 60, 200),
     pacerRunning: Boolean(state.pacerRunning),
@@ -345,34 +338,7 @@ function toPersistedState(): PersistedState {
     })),
     drinkPresets: state.drinkPresets.slice(0, 100).map((preset) => normalizeDrinkPreset(preset, preset.id)),
     bacSettings: normalizeBacSettings(state.bacSettings),
-    standbyCarryOverMs,
-    standbyCarryUpdatedAtMs: standbyCarryOverMs > 0 && typeof state.standbyCarryUpdatedAtMs === 'number'
-      ? state.standbyCarryUpdatedAtMs
-      : null,
   }
-}
-
-function getInterruptedCarryMsFromEntries(entries: DrinkEntry[]): number {
-  let carryOverMs = 0
-  for (const entry of entries) {
-    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
-    const plannedEndMs = getDrinkEntryPlannedEndTimestampMs(entry)
-    if (plannedEndMs > actualEndMs) {
-      carryOverMs += plannedEndMs - actualEndMs
-    }
-  }
-  return Math.max(0, carryOverMs)
-}
-
-function getLatestActualEndMsFromEntries(entries: DrinkEntry[]): number | null {
-  let latestActualEndMs: number | null = null
-  for (const entry of entries) {
-    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
-    latestActualEndMs = latestActualEndMs === null
-      ? actualEndMs
-      : Math.max(latestActualEndMs, actualEndMs)
-  }
-  return latestActualEndMs
 }
 
 function getActiveRemainingMsFromEntries(entries: DrinkEntry[], nowMs: number): number {
@@ -386,62 +352,53 @@ function getActiveRemainingMsFromEntries(entries: DrinkEntry[], nowMs: number): 
   return Math.max(0, activeRemainingMs)
 }
 
-function getCarryOverRemainingMs(nowMs: number, activeRemainingMs: number): number {
-  const baseCarryOverMs = Math.max(0, state.standbyCarryOverMs)
-  if (baseCarryOverMs <= 0) return 0
-  if (activeRemainingMs > 0) return baseCarryOverMs
+// The countdown is worked out from the drink log on every call, so adding,
+// editing or deleting a drink needs no bookkeeping. Each drink is active from
+// its start until its actual end (cut short when another drink is logged).
+// When a drink is cut short, the rest of its planned time becomes carry-over.
+// Carry-over only counts down while no drink is active.
+function getCountdownFromLog(entries: DrinkEntry[], nowMs: number): { activeRemainingMs: number; carryOverMs: number } {
+  type LogEvent = { t: number; kind: 'start' | 'end' | 'owe'; amountMs: number }
+  const events: LogEvent[] = []
+  let carryOverMs = 0
 
-  if (typeof state.standbyCarryUpdatedAtMs !== 'number') {
-    return baseCarryOverMs
+  for (const entry of entries) {
+    if (entry.timestampMs > nowMs) continue
+    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
+    const plannedEndMs = getDrinkEntryPlannedEndTimestampMs(entry)
+    events.push({ t: entry.timestampMs, kind: 'start', amountMs: 0 })
+    events.push({ t: actualEndMs, kind: 'end', amountMs: 0 })
+    if (plannedEndMs > actualEndMs) {
+      events.push({ t: actualEndMs, kind: 'owe', amountMs: plannedEndMs - actualEndMs })
+    }
+  }
+  events.sort((a, b) => a.t - b.t)
+
+  let activeCount = 0
+  let cursorMs: number | null = null
+  for (const event of events) {
+    if (event.t > nowMs) {
+      // Carry-over that starts after now is already owed; it just isn't
+      // counting down yet.
+      if (event.kind === 'owe') carryOverMs += event.amountMs
+      continue
+    }
+    if (cursorMs !== null && activeCount === 0) {
+      carryOverMs = Math.max(0, carryOverMs - (event.t - cursorMs))
+    }
+    cursorMs = event.t
+    if (event.kind === 'start') activeCount += 1
+    else if (event.kind === 'end') activeCount -= 1
+    else carryOverMs += event.amountMs
+  }
+  if (cursorMs !== null && activeCount === 0) {
+    carryOverMs = Math.max(0, carryOverMs - (nowMs - cursorMs))
   }
 
-  const elapsedMs = Math.max(0, nowMs - state.standbyCarryUpdatedAtMs)
-  return Math.max(0, baseCarryOverMs - elapsedMs)
-}
-
-function refreshCarryOverPersistenceWhileIdle(nowMs: number, activeRemainingMs: number): void {
-  if (activeRemainingMs > 0) return
-  if (state.standbyCarryOverMs <= 0) {
-    state.standbyCarryOverMs = 0
-    state.standbyCarryUpdatedAtMs = null
-    return
+  return {
+    activeRemainingMs: getActiveRemainingMsFromEntries(entries, nowMs),
+    carryOverMs,
   }
-
-  if (typeof state.standbyCarryUpdatedAtMs !== 'number') {
-    state.standbyCarryUpdatedAtMs = nowMs
-    savePersistedState()
-    return
-  }
-
-  const latestActualEndMs = getLatestActualEndMsFromEntries(state.drinkEntries)
-  if (latestActualEndMs !== null && state.standbyCarryUpdatedAtMs < latestActualEndMs) {
-    state.standbyCarryUpdatedAtMs = latestActualEndMs
-    savePersistedState()
-    return
-  }
-
-  const elapsedMs = Math.max(0, nowMs - state.standbyCarryUpdatedAtMs)
-  const wholeMinutesElapsed = Math.floor(elapsedMs / 60_000)
-  if (wholeMinutesElapsed <= 0) return
-
-  const consumedMs = Math.min(state.standbyCarryOverMs, wholeMinutesElapsed * 60_000)
-  if (consumedMs <= 0) return
-
-  state.standbyCarryOverMs = Math.max(0, state.standbyCarryOverMs - consumedMs)
-  if (state.standbyCarryOverMs <= 0) {
-    state.standbyCarryOverMs = 0
-    state.standbyCarryUpdatedAtMs = null
-  } else {
-    state.standbyCarryUpdatedAtMs += consumedMs
-  }
-  savePersistedState()
-}
-
-function freezeCarryOverAt(nowMs: number): void {
-  const activeRemainingMs = getActiveRemainingMsFromEntries(state.drinkEntries, nowMs)
-  const carryOverRemainingMs = getCarryOverRemainingMs(nowMs, activeRemainingMs)
-  state.standbyCarryOverMs = carryOverRemainingMs
-  state.standbyCarryUpdatedAtMs = carryOverRemainingMs > 0 ? nowMs : null
 }
 
 function savePersistedStateToBrowserStorage(serialized: string): void {
@@ -506,13 +463,6 @@ export function flushPersistedState(): Promise<void> {
 function applyHydratedState(raw: string): void {
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedState>
-    const parsedStandbyCarryOverMs = typeof parsed.standbyCarryOverMs === 'number'
-      ? Math.max(0, parsed.standbyCarryOverMs)
-      : null
-    const parsedStandbyCarryUpdatedAtMs = typeof parsed.standbyCarryUpdatedAtMs === 'number'
-      ? parsed.standbyCarryUpdatedAtMs
-      : null
-
     if (typeof parsed.bpm === 'number') {
       state.bpm = clampNumber(parsed.bpm, 60, 200)
     }
@@ -555,37 +505,6 @@ function applyHydratedState(raw: string): void {
 
       if (hadPrunedEntries) {
         savePersistedState()
-      }
-    }
-
-    const now = Date.now()
-    if (parsedStandbyCarryOverMs !== null) {
-      state.standbyCarryOverMs = parsedStandbyCarryOverMs
-      if (state.standbyCarryOverMs > 0) {
-        if (parsedStandbyCarryUpdatedAtMs !== null) {
-          state.standbyCarryUpdatedAtMs = parsedStandbyCarryUpdatedAtMs
-        } else {
-          const activeRemainingMs = getActiveRemainingMsFromEntries(state.drinkEntries, now)
-          const latestActualEndMs = getLatestActualEndMsFromEntries(state.drinkEntries)
-          state.standbyCarryUpdatedAtMs = activeRemainingMs > 0
-            ? now
-            : (latestActualEndMs ?? now)
-        }
-      } else {
-        state.standbyCarryOverMs = 0
-        state.standbyCarryUpdatedAtMs = null
-      }
-    } else {
-      const derivedCarryOverMs = getInterruptedCarryMsFromEntries(state.drinkEntries)
-      state.standbyCarryOverMs = derivedCarryOverMs
-      if (derivedCarryOverMs > 0) {
-        const activeRemainingMs = getActiveRemainingMsFromEntries(state.drinkEntries, now)
-        const latestActualEndMs = getLatestActualEndMsFromEntries(state.drinkEntries)
-        state.standbyCarryUpdatedAtMs = activeRemainingMs > 0
-          ? now
-          : (latestActualEndMs ?? now)
-      } else {
-        state.standbyCarryUpdatedAtMs = null
       }
     }
 
@@ -863,9 +782,7 @@ export function getBacEstimateWithSettings(overrideSettings: Partial<BacUserSett
 }
 
 export function getStandbyCountdown(nowMs: number = Date.now()): StandbyCountdown | null {
-  const activeRemainingMs = getActiveRemainingMsFromEntries(state.drinkEntries, nowMs)
-  refreshCarryOverPersistenceWhileIdle(nowMs, activeRemainingMs)
-  const carryOverMs = getCarryOverRemainingMs(nowMs, activeRemainingMs)
+  const { activeRemainingMs, carryOverMs } = getCountdownFromLog(state.drinkEntries, nowMs)
 
   const activeMinutes = Math.max(0, Math.round(activeRemainingMs / 60_000))
   const carryOverMinutes = Math.max(0, Math.round(carryOverMs / 60_000))
@@ -886,7 +803,6 @@ export function formatBacGdl(value: number): string {
 
 export function storeCurrentDrink(): DrinkEntry {
   const now = Date.now()
-  freezeCarryOverAt(now)
 
   const previousLatest = state.drinkEntries[0]
   const estimatedDurationMs = estimateDrinkDurationMs(state.drinkMl, state.drinkPercent)
@@ -902,8 +818,6 @@ export function storeCurrentDrink(): DrinkEntry {
     const previousEnd = getDrinkEntryEndTimestampMs(previousLatest)
     if (previousEnd > now) {
       const previousPlannedEnd = getDrinkEntryPlannedEndTimestampMs(previousLatest)
-      state.standbyCarryOverMs += Math.max(0, previousPlannedEnd - now)
-      state.standbyCarryUpdatedAtMs = now
       previousLatest.endTimestampMs = now
       previousLatest.plannedEndTimestampMs = previousPlannedEnd
     }
@@ -916,8 +830,6 @@ export function storeCurrentDrink(): DrinkEntry {
 
 export function clearDrinkEntries(): void {
   state.drinkEntries = []
-  state.standbyCarryOverMs = 0
-  state.standbyCarryUpdatedAtMs = null
   savePersistedState()
 }
 
@@ -962,21 +874,6 @@ export function removeDrinkEntry(timestampMs: number): boolean {
     return false
   }
 
-  // Settle the carry-over against the entries as they stood, then take back
-  // only the part this drink created (its planned end minus its actual end).
-  // Without this, deleting the first of two back-to-back drinks left its
-  // carry-over on the counter.
-  const now = Date.now()
-  freezeCarryOverAt(now)
-  const ownedCarryMs = getInterruptedCarryMsFromEntries([removed])
-  state.standbyCarryOverMs = Math.max(0, state.standbyCarryOverMs - ownedCarryMs)
-  if (state.standbyCarryOverMs <= 0) {
-    state.standbyCarryOverMs = 0
-    state.standbyCarryUpdatedAtMs = null
-  } else if (typeof state.standbyCarryUpdatedAtMs !== 'number') {
-    state.standbyCarryUpdatedAtMs = now
-  }
-
   state.drinkEntries = state.drinkEntries.filter((entry) => entry.timestampMs !== timestampMs)
   savePersistedState()
   return true
@@ -1003,20 +900,6 @@ export function updateDrinkEntry(originalTimestampMs: number, nextEntry: DrinkEn
     plannedEndTimestampMs: typeof nextEntry.plannedEndTimestampMs === 'number'
       ? Math.max(endTimestampMs, nextEntry.plannedEndTimestampMs)
       : Math.max(endTimestampMs, fallbackPlannedEndTimestampMs),
-  }
-
-  // Keep the carry-over in step with the edit: settle it first, then move it
-  // by how much this drink owes after the edit versus before.
-  const now = Date.now()
-  freezeCarryOverAt(now)
-  const owedBeforeMs = getInterruptedCarryMsFromEntries([currentEntry])
-  const owedAfterMs = getInterruptedCarryMsFromEntries([updatedEntry])
-  state.standbyCarryOverMs = Math.max(0, state.standbyCarryOverMs - owedBeforeMs + owedAfterMs)
-  if (state.standbyCarryOverMs <= 0) {
-    state.standbyCarryOverMs = 0
-    state.standbyCarryUpdatedAtMs = null
-  } else if (typeof state.standbyCarryUpdatedAtMs !== 'number') {
-    state.standbyCarryUpdatedAtMs = now
   }
 
   const nextEntries = [...state.drinkEntries]

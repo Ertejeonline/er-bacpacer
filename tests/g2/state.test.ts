@@ -49,8 +49,6 @@ function resetState(): void {
   state.drinkEntries = []
   state.drinkPresets = []
   state.bacSettings = { ...DEFAULT_BAC_SETTINGS }
-  state.standbyCarryOverMs = 0
-  state.standbyCarryUpdatedAtMs = null
   setBridge({
     getLocalStorage: async () => null,
     setLocalStorage: async () => undefined,
@@ -572,14 +570,19 @@ describe('g2/state', () => {
     })
   })
 
-  it('restores persisted carry-over countdown and keeps decrementing after reload time', async () => {
+  it('restores the countdown from the persisted drink log after reload', async () => {
     const now = 30 * 60 * 60 * 1000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
+    // Drink started 30 min ago, cut at 2 min ago, owes 5 min: 2 min already counted down.
     const getLocalStorage = vi.fn(async () => JSON.stringify({
-      standbyCarryOverMs: 5 * 60_000,
-      standbyCarryUpdatedAtMs: now - (2 * 60_000),
-      drinkEntries: [],
+      drinkEntries: [{
+        ml: 100,
+        percent: 10,
+        timestampMs: now - (30 * 60_000),
+        endTimestampMs: now - (2 * 60_000),
+        plannedEndTimestampMs: now + (3 * 60_000),
+      }],
     }))
 
     setBridge({

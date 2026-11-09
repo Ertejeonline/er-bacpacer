@@ -51,8 +51,6 @@ describe('g2/renderer', () => {
     state.currentMenuItem = 'standBy'
     state.focusedMenuItem = 'standBy'
     state.drinkEntries = []
-    state.standbyCarryOverMs = 0
-    state.standbyCarryUpdatedAtMs = null
   })
 
   it('maps main and add-drink menu indices', () => {
@@ -244,9 +242,6 @@ describe('g2/renderer', () => {
         plannedEndTimestampMs: 20 * 60_000,
       },
     ]
-    state.standbyCarryOverMs = 15 * 60_000
-    state.standbyCarryUpdatedAtMs = now
-
     await updateMenuDisplay()
 
     const topRightUpdate = bridge.textContainerUpgrade.mock.calls
@@ -271,9 +266,6 @@ describe('g2/renderer', () => {
         plannedEndTimestampMs: 42 * 60_000,
       },
     ]
-    state.standbyCarryOverMs = 12 * 60_000
-    state.standbyCarryUpdatedAtMs = now
-
     await updateMenuDisplay()
 
     const topRightUpdate = bridge.textContainerUpgrade.mock.calls
@@ -289,9 +281,16 @@ describe('g2/renderer', () => {
     const now = 30 * 60_000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
-    state.drinkEntries = []
-    state.standbyCarryOverMs = 5 * 60_000
-    state.standbyCarryUpdatedAtMs = now - (2 * 60_000)
+    // Drink cut at 28 min owes 5 min; 2 min of that has counted down by 30 min.
+    state.drinkEntries = [
+      {
+        ml: 100,
+        percent: 10,
+        timestampMs: 0,
+        endTimestampMs: 28 * 60_000,
+        plannedEndTimestampMs: 33 * 60_000,
+      },
+    ]
 
     await updateMenuDisplay()
 

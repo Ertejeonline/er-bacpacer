@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-11-09
+
+### Changed
+- The countdown (current timer and carry-over) is now worked out from the drink log every time it is shown, instead of being kept as a running total. Adding, editing or deleting a drink updates the countdown, the BAC estimate, peak and time to peak from the same log.
+- The carry-over counts down smoothly instead of in whole-minute steps.
+
+### Fixed
+- Carry-over left over from a deleted drink no longer stays on the counter.
+- Editing a drink's end time updates the carry-over to match.
+
 ## [1.6.1] - 2026-11-08
 
 ### Fixed
