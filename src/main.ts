@@ -39,7 +39,6 @@ async function boot() {
   const cancelDeleteDrinkBtn = document.getElementById('cancelDeleteDrinkBtn') as HTMLButtonElement | null
   const editDrinkModal = document.getElementById('editDrinkModal')
   const editDrinkTimeInput = document.getElementById('editDrinkTimeInput') as HTMLInputElement | null
-  const editDrinkEndTimeInput = document.getElementById('editDrinkEndTimeInput') as HTMLInputElement | null
   const editDrinkMlInput = document.getElementById('editDrinkMlInput') as HTMLInputElement | null
   const editDrinkPercentInput = document.getElementById('editDrinkPercentInput') as HTMLInputElement | null
   const saveEditDrinkBtn = document.getElementById('saveEditDrinkBtn') as HTMLButtonElement | null
@@ -110,7 +109,7 @@ async function boot() {
 
   const estimateDrinkDurationMs = (ml: number, percent: number) => {
     const fraction = percent >= 1 ? percent / 100 : percent
-    return Math.max(0, ((ml * fraction) / 0.5) * 60_000)
+    return Math.max(0, Math.round((ml * fraction) / 0.5) * 60_000)
   }
 
   const deriveDateOfBirthFromAgeYears = (ageYears: number): string => {
@@ -200,18 +199,13 @@ async function boot() {
   }
 
   const openEditDrinkModal = (timestampMs: number) => {
-    if (!editDrinkModal || !actions.getDrinkEntries || !editDrinkTimeInput || !editDrinkEndTimeInput || !editDrinkMlInput || !editDrinkPercentInput) return
+    if (!editDrinkModal || !actions.getDrinkEntries || !editDrinkTimeInput || !editDrinkMlInput || !editDrinkPercentInput) return
 
     const entry = actions.getDrinkEntries().find((candidate) => candidate.timestampMs === timestampMs)
     if (!entry) return
 
-    const endTimestampMs = typeof entry.endTimestampMs === 'number'
-      ? Math.max(entry.timestampMs, entry.endTimestampMs)
-      : (entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent))
-
     editingDrinkTimestampMs = entry.timestampMs
     editDrinkTimeInput.value = formatTimeInputValue(entry.timestampMs)
-    editDrinkEndTimeInput.value = formatTimeInputValue(endTimestampMs)
     editDrinkMlInput.value = String(entry.ml)
     editDrinkPercentInput.value = entry.percent.toFixed(1)
     editDrinkModal.classList.remove('hidden')
@@ -336,10 +330,7 @@ async function boot() {
     for (const entry of entries) {
       const dStart = new Date(entry.timestampMs)
       const startTime = dStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      const endTimestampMs = typeof entry.endTimestampMs === 'number'
-        ? Math.max(entry.timestampMs, entry.endTimestampMs)
-        : (entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent))
-      const dEnd = new Date(endTimestampMs)
+      const dEnd = new Date(entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent))
       const endTime = dEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       const timeRange = `${startTime}-${endTime}`
 
@@ -585,15 +576,10 @@ async function boot() {
     if (!editDrinkTimeInput.value.trim()) return
     normalizeTimeInputInPlace(editDrinkTimeInput)
   })
-  editDrinkEndTimeInput?.addEventListener('blur', () => {
-    if (!editDrinkEndTimeInput.value.trim()) return
-    normalizeTimeInputInPlace(editDrinkEndTimeInput)
-  })
   saveEditDrinkBtn?.addEventListener('click', () => {
     if (
       editingDrinkTimestampMs === null
       || !editDrinkTimeInput
-      || !editDrinkEndTimeInput
       || !editDrinkMlInput
       || !editDrinkPercentInput
       || !actions.updateDrinkEntry
@@ -602,16 +588,13 @@ async function boot() {
     }
 
     const hasValidStartTime = normalizeTimeInputInPlace(editDrinkTimeInput)
-    const hasValidEndTime = normalizeTimeInputInPlace(editDrinkEndTimeInput)
     const timeValue = editDrinkTimeInput.value
-    const endTimeValue = editDrinkEndTimeInput.value
     const timeMatch = /^(\d{2}):(\d{2})$/.exec(timeValue)
-    const endTimeMatch = /^(\d{2}):(\d{2})$/.exec(endTimeValue)
     const ml = Number(editDrinkMlInput.value)
     const percent = Number(editDrinkPercentInput.value)
 
-    if (!hasValidStartTime || !hasValidEndTime || !timeMatch || !endTimeMatch || !Number.isFinite(ml) || !Number.isFinite(percent)) {
-      updateStatus('Enter valid start/end times, amount, and alcohol percentage')
+    if (!hasValidStartTime || !timeMatch || !Number.isFinite(ml) || !Number.isFinite(percent)) {
+      updateStatus('Enter a valid time, amount, and alcohol percentage')
       return
     }
 
@@ -625,17 +608,9 @@ async function boot() {
 
     const nextTimestamp = new Date(existingEntry.timestampMs)
     nextTimestamp.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0)
-    const nextEndTimestamp = new Date(existingEntry.timestampMs)
-    nextEndTimestamp.setHours(Number(endTimeMatch[1]), Number(endTimeMatch[2]), 0, 0)
-
-    if (nextEndTimestamp.getTime() < nextTimestamp.getTime()) {
-      updateStatus('End time must be after start time')
-      return
-    }
 
     const updated = actions.updateDrinkEntry(editingDrinkTimestampMs, {
       timestampMs: nextTimestamp.getTime(),
-      endTimestampMs: nextEndTimestamp.getTime(),
       ml,
       percent,
     })

@@ -219,28 +219,10 @@ describe('g2/renderer', () => {
     const now = 25 * 60_000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
+    // Two 20 minute drinks, the first logged 5 minutes ago: 15 min left on it, 20 on the last.
     state.drinkEntries = [
-      {
-        ml: 100,
-        percent: 10,
-        timestampMs: 25 * 60_000,
-        endTimestampMs: 45 * 60_000,
-        plannedEndTimestampMs: 45 * 60_000,
-      },
-      {
-        ml: 100,
-        percent: 10,
-        timestampMs: 10 * 60_000,
-        endTimestampMs: 25 * 60_000,
-        plannedEndTimestampMs: 30 * 60_000,
-      },
-      {
-        ml: 100,
-        percent: 10,
-        timestampMs: 0,
-        endTimestampMs: 10 * 60_000,
-        plannedEndTimestampMs: 20 * 60_000,
-      },
+      { ml: 100, percent: 10, timestampMs: now },
+      { ml: 100, percent: 10, timestampMs: now - 5 * 60_000 },
     ]
     await updateMenuDisplay()
 
@@ -257,14 +239,11 @@ describe('g2/renderer', () => {
     const now = 30 * 60_000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
+    // A 20 minute drink logged 9 minutes ago and cut short 4 minutes later (16 left) by a 1 minute drink
+    // that finished 4 minutes ago: those 4 minutes come off, leaving 12.
     state.drinkEntries = [
-      {
-        ml: 100,
-        percent: 10,
-        timestampMs: 25 * 60_000,
-        endTimestampMs: 30 * 60_000,
-        plannedEndTimestampMs: 42 * 60_000,
-      },
+      { ml: 25, percent: 1, timestampMs: now - 5 * 60_000 },
+      { ml: 100, percent: 10, timestampMs: now - 9 * 60_000 },
     ]
     await updateMenuDisplay()
 
@@ -275,21 +254,17 @@ describe('g2/renderer', () => {
     expect(topRightUpdate?.content).toBe('+ 12')
   })
 
-  it('shows decremented plus-prefixed carry-over while carry-over countdown is running', async () => {
+  it('shows the time left of an earlier drink after the last drink has finished', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
     const now = 30 * 60_000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
-    // Drink cut at 28 min owes 5 min; 2 min of that has counted down by 30 min.
+    // A 20 minute drink logged 18 minutes ago and cut short 13 minutes later (7 left) by a 1 minute drink
+    // that finished 4 minutes ago: those 4 minutes come off, leaving 3.
     state.drinkEntries = [
-      {
-        ml: 100,
-        percent: 10,
-        timestampMs: 0,
-        endTimestampMs: 28 * 60_000,
-        plannedEndTimestampMs: 33 * 60_000,
-      },
+      { ml: 25, percent: 1, timestampMs: now - 5 * 60_000 },
+      { ml: 100, percent: 10, timestampMs: now - 18 * 60_000 },
     ]
 
     await updateMenuDisplay()
@@ -360,7 +335,6 @@ describe('g2/renderer', () => {
       ml: 600,
       percent: 5,
       timestampMs: now - (120 * 60 * 1000),
-      endTimestampMs: now - (90 * 60 * 1000),
     }]
     state.menuVisible = false
     state.currentMenuItem = 'setupdrink'
@@ -384,7 +358,6 @@ describe('g2/renderer', () => {
       ml: 600,
       percent: 5,
       timestampMs: now - (120 * 60 * 1000),
-      endTimestampMs: now - (90 * 60 * 1000),
     }]
     state.menuVisible = false
     state.currentMenuItem = 'setupdrink'
@@ -409,7 +382,6 @@ describe('g2/renderer', () => {
       ml: 600,
       percent: 5,
       timestampMs: now - (10 * 60 * 1000),
-      endTimestampMs: now + (20 * 60 * 1000),
     }]
 
     await updateMenuDisplay()
@@ -432,7 +404,6 @@ describe('g2/renderer', () => {
       ml: 600,
       percent: 5,
       timestampMs: now - (10 * 60 * 1000),
-      endTimestampMs: now + (20 * 60 * 1000),
     }]
 
     await updateMenuDisplay()
@@ -454,7 +425,6 @@ describe('g2/renderer', () => {
       ml: 600,
       percent: 5,
       timestampMs: now - (120 * 60 * 1000),
-      endTimestampMs: now - (90 * 60 * 1000),
     }]
 
     await updateMenuDisplay()

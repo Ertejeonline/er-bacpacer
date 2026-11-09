@@ -12,7 +12,6 @@ import {
   getBacSettings,
   getBridge,
   getDrinkEntryEndTimestampMs,
-  getDrinkEntryPlannedEndTimestampMs,
   getDrinkPresets,
   getStandbyCountdown,
   loadPersistedState,
@@ -35,6 +34,7 @@ import {
 } from '../../g2/state'
 
 const DEFAULT_BAC_SETTINGS = { ...state.bacSettings }
+const MIN = 60_000
 
 function resetState(): void {
   state.startupRendered = false
@@ -66,155 +66,104 @@ describe('g2/state', () => {
 
   it('calculates drink duration from percent values', () => {
     expect(estimateDrinkDurationMs(100, 5)).toBe(600000)
-    expect(estimateDrinkDurationMs(25, 1)).toBe(30000)
     expect(estimateDrinkDurationMs(100, 0.05)).toBe(600000)
   })
 
-  it('returns fallback end timestamp when endTimestampMs is missing', () => {
-    const entry = {
-      ml: 200,
-      percent: 10,
-      timestampMs: 1000,
-    }
-
-    expect(getDrinkEntryEndTimestampMs(entry)).toBe(2401000)
+  it('rounds the duration of a drink to whole minutes', () => {
+    expect(estimateDrinkDurationMs(175, 13.5)).toBe(47 * 60_000) // 47.25 min
+    expect(estimateDrinkDurationMs(25, 13.5)).toBe(7 * 60_000) // 6.75 min
+    expect(estimateDrinkDurationMs(25, 1)).toBe(60_000) // 0.5 min
   })
 
-  it('clips invalid explicit endTimestampMs to at least start timestamp', () => {
-    const entry = {
-      ml: 200,
-      percent: 10,
-      timestampMs: 5000,
-      endTimestampMs: 1000,
-    }
-
-    expect(getDrinkEntryEndTimestampMs(entry)).toBe(5000)
+  it('calculates the end of a drink from its start, amount and alcohol', () => {
+    expect(getDrinkEntryEndTimestampMs({ ml: 200, percent: 10, timestampMs: 1000 })).toBe(2401000)
   })
 
-  it('stores a drink and trims prior overlapping drink end time', () => {
+  it('ignores end times stored by older versions', () => {
+    const legacy = { ml: 200, percent: 10, timestampMs: 5000, endTimestampMs: 1000, plannedEndTimestampMs: 9000 }
+    expect(getDrinkEntryEndTimestampMs(legacy)).toBe(2405000)
+  })
+
+  it('stores only start, amount and alcohol, and leaves earlier drinks untouched', () => {
     const now = 1000000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
-    state.drinkEntries = [{
-      ml: 200,
-      percent: 10,
-      timestampMs: now - 60000,
-      endTimestampMs: now + 600000,
-    }]
-
+    state.drinkEntries = [{ ml: 200, percent: 10, timestampMs: now - 60000 }]
     setDrinkMl(300)
     setDrinkPercent(12)
 
     const created = storeCurrentDrink()
-    expect(created.timestampMs).toBe(now)
-    expect(state.drinkEntries[0]?.timestampMs).toBe(now)
-    expect(state.drinkEntries[1]?.endTimestampMs).toBe(now)
-    expect(state.drinkEntries[1]?.plannedEndTimestampMs).toBe((now - 60000) + estimateDrinkDurationMs(200, 10))
+    expect(created).toEqual({ ml: 300, percent: 12, timestampMs: now })
+    expect(state.drinkEntries).toEqual([created, { ml: 200, percent: 10, timestampMs: now - 60000 }])
   })
 
-  it('derives cumulative standby countdown carry-over from interrupted drinks', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
-
-    setDrinkMl(100)
-    setDrinkPercent(10)
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink()
-
-    nowSpy.mockReturnValue(10 * 60_000)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(10 * 60_000)).toEqual({
-      activeMinutes: 20,
-      carryOverMinutes: 10,
-    })
-
-    nowSpy.mockReturnValue(25 * 60_000)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(25 * 60_000)).toEqual({
-      activeMinutes: 20,
-      carryOverMinutes: 15,
-    })
+  it('a single unfinished drink is the current countdown', () => {
+    state.drinkEntries = [{ ml: 100, percent: 10, timestampMs: 0 }] // 20 min
+    expect(getStandbyCountdown(5 * MIN)).toEqual({ activeMinutes: 15, carryOverMinutes: 0 })
   })
 
-  it('starts consuming carry-over when active countdown reaches zero and clears at zero', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
-
-    setDrinkMl(100)
-    setDrinkPercent(10)
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink()
-
-    nowSpy.mockReturnValue(10 * 60_000)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(30 * 60_000)).toEqual({
-      activeMinutes: 0,
-      carryOverMinutes: 10,
-    })
-
-    expect(getStandbyCountdown(32 * 60_000)).toEqual({
-      activeMinutes: 0,
-      carryOverMinutes: 8,
-    })
-
-    expect(getStandbyCountdown(40 * 60_000)).toBeNull()
+  it('a finished drink on its own shows nothing', () => {
+    state.drinkEntries = [{ ml: 100, percent: 10, timestampMs: 0 }] // 20 min
+    expect(getStandbyCountdown(20 * MIN)).toBeNull()
+    expect(getStandbyCountdown(25 * MIN)).toBeNull()
   })
 
-  it('keeps the remaining carry-over when a new drink is logged during carry-over countdown', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
-
-    setDrinkMl(100)
-    setDrinkPercent(10)
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink()
-
-    nowSpy.mockReturnValue(10 * 60_000)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(32 * 60_000)).toEqual({
-      activeMinutes: 0,
-      carryOverMinutes: 8,
-    })
-
-    nowSpy.mockReturnValue(32 * 60_000)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(32 * 60_000)).toEqual({
-      activeMinutes: 20,
-      carryOverMinutes: 8,
-    })
+  it('two drinks logged at the same time, read in order from the log', () => {
+    // Drink 1 and drink 2: 175 ml at 13.5% (47 min each), both at 12:00. Minutes are counted from 12:00.
+    state.drinkEntries = [
+      { ml: 175, percent: 13.5, timestampMs: 0 }, // drink 2
+      { ml: 175, percent: 13.5, timestampMs: 0 }, // drink 1
+    ]
+    // 12:10 - drink 1 had 47 left when drink 2 started (+47); drink 2 has 37 left.
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 37, carryOverMinutes: 47 })
+    // 12:50 - drink 2 finished at 12:47; those 3 minutes come off the +47.
+    expect(getStandbyCountdown(50 * MIN)).toEqual({ activeMinutes: 0, carryOverMinutes: 44 })
+    expect(getStandbyCountdown(93 * MIN)).toEqual({ activeMinutes: 0, carryOverMinutes: 1 })
+    expect(getStandbyCountdown(94 * MIN)).toBeNull()
   })
 
-  it('does not resurrect consumed carry-over when logging a new drink after carry reaches zero', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
+  it('carry-over stays put while a drink is active and counts down once nothing is', () => {
+    // Three 20 minute drinks at 0, 5 and 10 min: the first two are cut short with 15 min left each.
+    state.drinkEntries = [0, 5, 10].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(12 * MIN)).toEqual({ activeMinutes: 18, carryOverMinutes: 30 })
+    expect(getStandbyCountdown(20 * MIN)).toEqual({ activeMinutes: 10, carryOverMinutes: 30 })
+    // The last drink finishes at 30 min; after that the carry-over counts down.
+    expect(getStandbyCountdown(40 * MIN)).toEqual({ activeMinutes: 0, carryOverMinutes: 20 })
+    expect(getStandbyCountdown(60 * MIN)).toBeNull()
+  })
 
-    setDrinkMl(50)
-    setDrinkPercent(1)
+  it('a drink that had already finished when the next was logged adds nothing', () => {
+    // 20 minute drinks at 0 and 30 min: the first finished at 20 min.
+    state.drinkEntries = [0, 30].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(35 * MIN)).toEqual({ activeMinutes: 15, carryOverMinutes: 0 })
+  })
 
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink()
+  it('carry-over counts down in the gap between two drinks', () => {
+    // Drinks at 0 and 5 min (20 min each): the first owes 15 min. The second finishes at 25 min.
+    // A third drink at 30 min: 5 min of standby have come off the carry-over.
+    state.drinkEntries = [0, 5, 30].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(31 * MIN)).toEqual({ activeMinutes: 19, carryOverMinutes: 10 })
+  })
 
-    nowSpy.mockReturnValue(1)
-    storeCurrentDrink()
+  it('does not depend on the order the entries are stored in', () => {
+    state.drinkEntries = [10, 5, 0].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(12 * MIN)).toEqual({ activeMinutes: 18, carryOverMinutes: 30 })
+    state.drinkEntries = [0, 10, 5].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(12 * MIN)).toEqual({ activeMinutes: 18, carryOverMinutes: 30 })
+  })
 
-    // First minute drink finishes and carry-over begins.
-    expect(getStandbyCountdown(60_001)).toEqual({
-      activeMinutes: 0,
-      carryOverMinutes: 1,
-    })
+  it('shows only carry-over when the last drink has finished but an earlier one is still owed', () => {
+    state.drinkEntries = [
+      { ml: 175, percent: 13.5, timestampMs: 0 }, // 47 min, cut at 1 min with 46 left
+      { ml: 25, percent: 13.5, timestampMs: MIN }, // 7 min: 1 to 8 min
+    ]
+    // At 10 min the last drink finished 2 min ago, so 2 min come off the 46.
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 0, carryOverMinutes: 44 })
+  })
 
-    // Carry-over has been fully consumed and display should be blank.
-    expect(getStandbyCountdown(120_001)).toBeNull()
-
-    // Logging a new 1-minute drink after carry is consumed should not show +1.
-    nowSpy.mockReturnValue(120_001)
-    storeCurrentDrink()
-
-    expect(getStandbyCountdown(120_001)).toEqual({
-      activeMinutes: 1,
-      carryOverMinutes: 0,
-    })
+  it('ignores a drink that has not started yet', () => {
+    state.drinkEntries = [{ ml: 100, percent: 10, timestampMs: 10 * MIN }]
+    expect(getStandbyCountdown(5 * MIN)).toBeNull()
   })
 
   it('returns zero BAC estimate with no entries', () => {
@@ -230,7 +179,6 @@ describe('g2/state', () => {
       ml: 500,
       percent: 5,
       timestampMs: now - 10 * 60000,
-      endTimestampMs: now,
     }]
 
     const estimate = getBacEstimateAt(now)
@@ -245,13 +193,11 @@ describe('g2/state', () => {
         ml: 500,
         percent: 5,
         timestampMs: now - (10 * 60 * 1000),
-        endTimestampMs: now,
       },
       {
         ml: 200,
         percent: 10,
         timestampMs: now - (20 * 60 * 60 * 1000),
-        endTimestampMs: now - ((20 * 60 * 60 * 1000) - (30 * 60 * 1000)),
       },
     ]
 
@@ -259,111 +205,79 @@ describe('g2/state', () => {
     expect(estimate.bacGdl).toBeGreaterThan(0)
   })
 
-  it('uses explicit drink end times to slow BAC rise while a drink is still being consumed', () => {
-    const now = 60 * 60 * 1000
+  it('BAC is still rising while a drink is being consumed', () => {
+    const now = 60 * MIN
+    // 500 ml at 5% takes 50 min to drink; 10 min in, it is still being absorbed.
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: now - 10 * MIN }]
+    const estimate = getBacEstimateAt(now)
 
-    state.drinkEntries = [{
-      ml: 500,
-      percent: 5,
-      timestampMs: now - (30 * 60 * 1000),
-      endTimestampMs: now,
-    }]
-    const duringDrinkEstimate = getBacEstimateAt(now)
-
-    state.drinkEntries = [{
-      ml: 500,
-      percent: 5,
-      timestampMs: now - (30 * 60 * 1000),
-      endTimestampMs: now - (30 * 60 * 1000),
-    }]
-    const instantDrinkEstimate = getBacEstimateAt(now)
-
-    expect(duringDrinkEstimate.bacGdl).toBeLessThan(instantDrinkEstimate.bacGdl)
+    expect(estimate.bacGdl).toBeGreaterThan(0)
+    expect(estimate.isRisingToPeak).toBe(true)
+    expect(estimate.peakAtMs).toBeGreaterThan(now)
   })
 
   it('updates, resorts, and clamps drink entry values', () => {
     state.drinkEntries = [
-      { ml: 100, percent: 5, timestampMs: 1000, endTimestampMs: 2000 },
-      { ml: 150, percent: 8, timestampMs: 500, endTimestampMs: 1500 },
+      { ml: 100, percent: 5, timestampMs: 1000 },
+      { ml: 150, percent: 8, timestampMs: 500 },
     ]
 
-    const updated = updateDrinkEntry(500, {
-      ml: 5000,
-      percent: 120,
-      timestampMs: 3000,
-      endTimestampMs: 2000,
-    })
+    const updated = updateDrinkEntry(500, { ml: 5000, percent: 120, timestampMs: 3000 })
 
     expect(updated).toBe(true)
-    expect(state.drinkEntries[0]?.timestampMs).toBe(3000)
-    expect(state.drinkEntries[0]?.ml).toBe(2000)
-    expect(state.drinkEntries[0]?.percent).toBe(100)
-    expect(state.drinkEntries[0]?.endTimestampMs).toBe(3000)
+    expect(state.drinkEntries[0]).toEqual({ ml: 2000, percent: 100, timestampMs: 3000 })
+    expect(state.drinkEntries[1]?.timestampMs).toBe(1000)
   })
 
-  it('deleting the first of two back-to-back drinks removes its carry-over', () => {
+  it('the countdown follows every change to the log: add, edit, delete', () => {
     const nowSpy = vi.spyOn(Date, 'now')
-    setDrinkMl(100)
-    setDrinkPercent(5) // 100 ml at 5% = 10 min
-
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink() // A: 10 min
-
-    nowSpy.mockReturnValue(5 * 60_000)
-    const second = storeCurrentDrink() // B: 10 min, A is cut short and owes 5 min
-
-    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 5 })
-
-    // Delete the first drink from the phone.
-    expect(removeDrinkEntry(0)).toBe(true)
-    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
-
-    // The second drink still counts down normally.
-    expect(state.drinkEntries.map((entry) => entry.timestampMs)).toEqual([second.timestampMs])
-    expect(getStandbyCountdown(10 * 60_000)).toEqual({ activeMinutes: 5, carryOverMinutes: 0 })
-  })
-
-  it('editing the end time of an interrupted drink updates its carry-over', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
-    setDrinkMl(100)
-    setDrinkPercent(5) // 10 min
-
-    nowSpy.mockReturnValue(0)
-    storeCurrentDrink() // A
-    nowSpy.mockReturnValue(5 * 60_000)
-    storeCurrentDrink() // B; A is cut at 5 min and owes 5 min
-
-    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 5 })
-
-    // End moved to 8 min: owes 2.
-    expect(updateDrinkEntry(0, { timestampMs: 0, endTimestampMs: 8 * 60_000, ml: 100, percent: 5 })).toBe(true)
-    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 2 })
-
-    // End restored to the planned 10 min: owes nothing.
-    expect(updateDrinkEntry(0, { timestampMs: 0, endTimestampMs: 10 * 60_000, ml: 100, percent: 5 })).toBe(true)
-    expect(getStandbyCountdown(5 * 60_000)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
-  })
-
-  it('editing a drink that owes nothing leaves the carry-over unchanged', () => {
-    const nowSpy = vi.spyOn(Date, 'now')
-    setDrinkMl(100)
-    setDrinkPercent(5)
+    setDrinkMl(175)
+    setDrinkPercent(13.5) // 47 min
 
     nowSpy.mockReturnValue(0)
     storeCurrentDrink()
-    nowSpy.mockReturnValue(5 * 60_000)
-    storeCurrentDrink() // A owes 5; B (index 0) owes nothing
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 47, carryOverMinutes: 0 })
 
-    // Change only B's amount; its end time stays as stored.
-    const b = state.drinkEntries[0]
-    expect(updateDrinkEntry(b.timestampMs, { ...b, ml: 150 })).toBe(true)
-    expect(getStandbyCountdown(5 * 60_000).carryOverMinutes).toBe(5)
+    // A second drink 1 min later: the first had 46 min left.
+    nowSpy.mockReturnValue(MIN)
+    storeCurrentDrink()
+    expect(getStandbyCountdown(MIN)).toEqual({ activeMinutes: 47, carryOverMinutes: 46 })
+
+    // Edit the first drink down to 25 ml (7 min): 6 min were left when the second was logged.
+    expect(updateDrinkEntry(0, { timestampMs: 0, ml: 25, percent: 13.5 })).toBe(true)
+    expect(getStandbyCountdown(MIN)).toEqual({ activeMinutes: 47, carryOverMinutes: 6 })
+
+    // A 25 ml drink at 2 min: 6 (first) + 46 (second) behind the +, 7 on the last.
+    setDrinkMl(25)
+    nowSpy.mockReturnValue(2 * MIN)
+    storeCurrentDrink()
+    expect(getStandbyCountdown(2 * MIN)).toEqual({ activeMinutes: 7, carryOverMinutes: 52 })
+
+    // Delete the 175 ml drink: the first drink now had 5 min left when the last was logged.
+    expect(removeDrinkEntry(MIN)).toBe(true)
+    expect(getStandbyCountdown(2 * MIN)).toEqual({ activeMinutes: 7, carryOverMinutes: 5 })
+  })
+
+  it('editing the time of a drink moves its end with it', () => {
+    state.drinkEntries = [{ ml: 100, percent: 10, timestampMs: 0 }] // ends at 20 min
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
+
+    expect(updateDrinkEntry(0, { timestampMs: 5 * MIN, ml: 100, percent: 10 })).toBe(true) // now ends at 25 min
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 15, carryOverMinutes: 0 })
+  })
+
+  it('deleting the last drink makes the one before it the current countdown', () => {
+    state.drinkEntries = [5, 0].map((m) => ({ ml: 100, percent: 10, timestampMs: m * MIN }))
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 15, carryOverMinutes: 15 })
+
+    expect(removeDrinkEntry(5 * MIN)).toBe(true)
+    expect(getStandbyCountdown(10 * MIN)).toEqual({ activeMinutes: 10, carryOverMinutes: 0 })
   })
 
   it('removes and clears drink entries', () => {
     state.drinkEntries = [
-      { ml: 100, percent: 5, timestampMs: 1000, endTimestampMs: 2000 },
-      { ml: 200, percent: 10, timestampMs: 2000, endTimestampMs: 3000 },
+      { ml: 100, percent: 5, timestampMs: 1000 },
+      { ml: 200, percent: 10, timestampMs: 2000 },
     ]
 
     expect(removeDrinkEntry(1000)).toBe(true)
@@ -529,24 +443,15 @@ describe('g2/state', () => {
     expect(setLocalStorage).toHaveBeenCalledTimes(1)
   })
 
-  it('reconstructs legacy interrupted-drink carry-over when planned finish was not stored', async () => {
+  it('loads older saves that stored end times and works the countdown out from the log', async () => {
     const now = 25 * 60 * 60 * 1000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
     const getLocalStorage = vi.fn(async () => JSON.stringify({
       drinkEntries: [
-        {
-          ml: 100,
-          percent: 10,
-          timestampMs: now - (25 * 60_000),
-          endTimestampMs: now - (15 * 60_000),
-        },
-        {
-          ml: 100,
-          percent: 10,
-          timestampMs: now - (15 * 60_000),
-          endTimestampMs: now + (5 * 60_000),
-        },
+        // 20 minute drinks; the stored ends below are ignored.
+        { ml: 100, percent: 10, timestampMs: now - (25 * MIN), endTimestampMs: now - (15 * MIN), plannedEndTimestampMs: now - (5 * MIN) },
+        { ml: 100, percent: 10, timestampMs: now - (15 * MIN), endTimestampMs: now + (5 * MIN), plannedEndTimestampMs: now + (5 * MIN) },
       ],
     }))
 
@@ -557,32 +462,21 @@ describe('g2/state', () => {
 
     await loadPersistedState()
 
-    const activeEntry = state.drinkEntries.find((entry) => entry.timestampMs === now - (15 * 60_000))
-    const interruptedEntry = state.drinkEntries.find((entry) => entry.timestampMs === now - (25 * 60_000))
-
-    expect(activeEntry).toBeDefined()
-    expect(interruptedEntry).toBeDefined()
-    expect(getDrinkEntryPlannedEndTimestampMs(activeEntry!)).toBe(now + (5 * 60_000))
-    expect(getDrinkEntryPlannedEndTimestampMs(interruptedEntry!)).toBe(now - (5 * 60_000))
-    expect(getStandbyCountdown(now)).toEqual({
-      activeMinutes: 5,
-      carryOverMinutes: 10,
-    })
+    expect(state.drinkEntries).toHaveLength(2)
+    expect(state.drinkEntries.every((entry) => !('endTimestampMs' in entry) && !('plannedEndTimestampMs' in entry))).toBe(true)
+    // The first drink was cut when the second started, with 10 min left; the second has 5 min left.
+    expect(getStandbyCountdown(now)).toEqual({ activeMinutes: 5, carryOverMinutes: 10 })
   })
 
   it('restores the countdown from the persisted drink log after reload', async () => {
     const now = 30 * 60 * 60 * 1000
     vi.spyOn(Date, 'now').mockReturnValue(now)
 
-    // Drink started 30 min ago, cut at 2 min ago, owes 5 min: 2 min already counted down.
     const getLocalStorage = vi.fn(async () => JSON.stringify({
-      drinkEntries: [{
-        ml: 100,
-        percent: 10,
-        timestampMs: now - (30 * 60_000),
-        endTimestampMs: now - (2 * 60_000),
-        plannedEndTimestampMs: now + (3 * 60_000),
-      }],
+      drinkEntries: [
+        { ml: 100, percent: 10, timestampMs: now - (10 * MIN) }, // 20 min drink, 15 left when the next started
+        { ml: 100, percent: 10, timestampMs: now - (5 * MIN) }, // 20 min drink: 15 left
+      ],
     }))
 
     setBridge({
@@ -592,10 +486,7 @@ describe('g2/state', () => {
 
     await loadPersistedState()
 
-    expect(getStandbyCountdown(now)).toEqual({
-      activeMinutes: 0,
-      carryOverMinutes: 3,
-    })
+    expect(getStandbyCountdown(now)).toEqual({ activeMinutes: 15, carryOverMinutes: 15 })
   })
 
   it('formats BAC and drink entry time values', () => {
@@ -655,7 +546,7 @@ describe('g2/state', () => {
     registerBackgroundState()
 
     state.drinkEntries = [
-      { ml: 250, percent: 5, timestampMs: Date.now() - 1000, endTimestampMs: Date.now() + 1000 },
+      { ml: 250, percent: 5, timestampMs: Date.now() - 1000 },
     ]
     state.drinkPresets = [
       { id: 'preset-1', ml: 150, percent: 13.5 },

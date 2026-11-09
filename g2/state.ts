@@ -5,12 +5,12 @@ import { executeSerialized } from '../_shared/bridge-serializer'
 
 export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink' | 'presets'
 
+// The drink log is the single source of truth: a drink is its start time, amount
+// and alcohol percentage. Its end time is always calculated from those.
 export type DrinkEntry = {
   ml: number
   percent: number
   timestampMs: number
-  endTimestampMs?: number
-  plannedEndTimestampMs?: number
 }
 
 export type DrinkPreset = {
@@ -187,21 +187,17 @@ function normalizeDrinkPreset(value: Partial<DrinkPreset> | undefined, fallbackI
   }
 }
 
+// How long a drink takes, in whole minutes (175 ml at 13.5% = 47 min), so the
+// countdown reads like the figure shown for the drink.
 export function estimateDrinkDurationMs(ml: number, percent: number): number {
-  const intervalMinutes = (ml * getPercentFraction(percent)) / 0.5
+  const intervalMinutes = Math.round((ml * getPercentFraction(percent)) / 0.5)
   return Math.max(0, intervalMinutes * 60_000)
 }
 
+// When a drink finishes: its start plus the time its amount and alcohol take.
+// Calculated every time; it is never stored.
 export function getDrinkEntryEndTimestampMs(entry: DrinkEntry): number {
-  const fallbackEnd = entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent)
-  if (typeof entry.endTimestampMs !== 'number') return fallbackEnd
-  return Math.max(entry.timestampMs, entry.endTimestampMs)
-}
-
-export function getDrinkEntryPlannedEndTimestampMs(entry: DrinkEntry): number {
-  const fallbackEnd = entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent)
-  if (typeof entry.plannedEndTimestampMs !== 'number') return fallbackEnd
-  return Math.max(entry.timestampMs, entry.plannedEndTimestampMs)
+  return entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent)
 }
 
 function normalizeFoodProfile(value: unknown): BacFoodProfile {
@@ -333,72 +329,55 @@ function toPersistedState(): PersistedState {
       ml: clampNumber(entry.ml, 0, 2000),
       percent: clampNumber(entry.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
       timestampMs: entry.timestampMs,
-      endTimestampMs: getDrinkEntryEndTimestampMs(entry),
-      plannedEndTimestampMs: getDrinkEntryPlannedEndTimestampMs(entry),
     })),
     drinkPresets: state.drinkPresets.slice(0, 100).map((preset) => normalizeDrinkPreset(preset, preset.id)),
     bacSettings: normalizeBacSettings(state.bacSettings),
   }
 }
 
-function getActiveRemainingMsFromEntries(entries: DrinkEntry[], nowMs: number): number {
-  let activeRemainingMs = 0
-  for (const entry of entries) {
-    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
-    if (actualEndMs > nowMs) {
-      activeRemainingMs = Math.max(activeRemainingMs, actualEndMs - nowMs)
-    }
-  }
-  return Math.max(0, activeRemainingMs)
-}
-
-// The countdown is worked out from the drink log on every call, so adding,
-// editing or deleting a drink needs no bookkeeping. Each drink is active from
-// its start until its actual end (cut short when another drink is logged).
-// When a drink is cut short, the rest of its planned time becomes carry-over.
-// Carry-over only counts down while no drink is active.
+// The countdown is worked out from the drink log every time it is shown; nothing
+// about it is stored. Going through the log in order, oldest first, each drink's
+// end is calculated from its start, amount and alcohol:
+// - A drink that is not the last one is cut short by the next drink. If it was
+//   not finished by then, the time it had left is added to the carry-over (the
+//   figure after the +). If it was already finished, it adds nothing.
+// - The last drink is the current countdown while it is unfinished.
+// - The carry-over only counts down while no drink is active: in the gaps between
+//   drinks, and once the last drink has finished.
 function getCountdownFromLog(entries: DrinkEntry[], nowMs: number): { activeRemainingMs: number; carryOverMs: number } {
-  type LogEvent = { t: number; kind: 'start' | 'end' | 'owe'; amountMs: number }
-  const events: LogEvent[] = []
+  const started = entries
+    .map((entry, order) => ({ entry, order }))
+    .filter(({ entry }) => entry.timestampMs <= nowMs)
+    // Same start time: the one logged later (earlier in the stored list) is the later drink.
+    .sort((a, b) => a.entry.timestampMs - b.entry.timestampMs || b.order - a.order)
+    .map(({ entry }) => entry)
+
   let carryOverMs = 0
+  let standbySinceMs: number | null = null // when the drink before stopped being active
 
-  for (const entry of entries) {
-    if (entry.timestampMs > nowMs) continue
-    const actualEndMs = getDrinkEntryEndTimestampMs(entry)
-    const plannedEndMs = getDrinkEntryPlannedEndTimestampMs(entry)
-    events.push({ t: entry.timestampMs, kind: 'start', amountMs: 0 })
-    events.push({ t: actualEndMs, kind: 'end', amountMs: 0 })
-    if (plannedEndMs > actualEndMs) {
-      events.push({ t: actualEndMs, kind: 'owe', amountMs: plannedEndMs - actualEndMs })
+  for (let index = 0; index < started.length; index += 1) {
+    const entry = started[index]
+    const finishMs = getDrinkEntryEndTimestampMs(entry)
+
+    if (standbySinceMs !== null && entry.timestampMs > standbySinceMs) {
+      carryOverMs = Math.max(0, carryOverMs - (entry.timestampMs - standbySinceMs))
     }
-  }
-  events.sort((a, b) => a.t - b.t)
 
-  let activeCount = 0
-  let cursorMs: number | null = null
-  for (const event of events) {
-    if (event.t > nowMs) {
-      // Carry-over that starts after now is already owed; it just isn't
-      // counting down yet.
-      if (event.kind === 'owe') carryOverMs += event.amountMs
+    const next = started[index + 1]
+    if (next) {
+      const stoppedMs = Math.min(finishMs, next.timestampMs)
+      carryOverMs += finishMs - stoppedMs
+      standbySinceMs = stoppedMs
       continue
     }
-    if (cursorMs !== null && activeCount === 0) {
-      carryOverMs = Math.max(0, carryOverMs - (event.t - cursorMs))
+
+    if (finishMs > nowMs) {
+      return { activeRemainingMs: finishMs - nowMs, carryOverMs }
     }
-    cursorMs = event.t
-    if (event.kind === 'start') activeCount += 1
-    else if (event.kind === 'end') activeCount -= 1
-    else carryOverMs += event.amountMs
-  }
-  if (cursorMs !== null && activeCount === 0) {
-    carryOverMs = Math.max(0, carryOverMs - (nowMs - cursorMs))
+    carryOverMs = Math.max(0, carryOverMs - (nowMs - finishMs))
   }
 
-  return {
-    activeRemainingMs: getActiveRemainingMsFromEntries(entries, nowMs),
-    carryOverMs,
-  }
+  return { activeRemainingMs: 0, carryOverMs }
 }
 
 function savePersistedStateToBrowserStorage(serialized: string): void {
@@ -488,14 +467,7 @@ function applyHydratedState(raw: string): void {
             : state.drinkPercent
           const timeHHMM = typeof candidate.timeHHMM === 'string' ? candidate.timeHHMM : '00:00'
           const timestampMs = typeof candidate.timestampMs === 'number' ? candidate.timestampMs : timestampFromHHMM(timeHHMM)
-          const estimatedEnd = timestampMs + estimateDrinkDurationMs(ml, percent)
-          const endTimestampMs = typeof candidate.endTimestampMs === 'number'
-            ? Math.max(timestampMs, candidate.endTimestampMs)
-            : estimatedEnd
-          const plannedEndTimestampMs = typeof candidate.plannedEndTimestampMs === 'number'
-            ? Math.max(timestampMs, candidate.plannedEndTimestampMs)
-            : estimatedEnd
-          return { ml, percent, timestampMs, endTimestampMs, plannedEndTimestampMs }
+          return { ml, percent, timestampMs }
         })
         .filter((entry) => (now - entry.timestampMs) < DRINK_ENTRY_MAX_AGE_MS)
         .slice(0, 500)
@@ -802,25 +774,10 @@ export function formatBacGdl(value: number): string {
 }
 
 export function storeCurrentDrink(): DrinkEntry {
-  const now = Date.now()
-
-  const previousLatest = state.drinkEntries[0]
-  const estimatedDurationMs = estimateDrinkDurationMs(state.drinkMl, state.drinkPercent)
   const entry: DrinkEntry = {
     ml: clampNumber(state.drinkMl, 0, 2000),
     percent: clampNumber(state.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
-    timestampMs: now,
-    endTimestampMs: now + estimatedDurationMs,
-    plannedEndTimestampMs: now + estimatedDurationMs,
-  }
-
-  if (previousLatest) {
-    const previousEnd = getDrinkEntryEndTimestampMs(previousLatest)
-    if (previousEnd > now) {
-      const previousPlannedEnd = getDrinkEntryPlannedEndTimestampMs(previousLatest)
-      previousLatest.endTimestampMs = now
-      previousLatest.plannedEndTimestampMs = previousPlannedEnd
-    }
+    timestampMs: Date.now(),
   }
 
   state.drinkEntries = [entry, ...state.drinkEntries].slice(0, 500)
@@ -885,21 +842,10 @@ export function updateDrinkEntry(originalTimestampMs: number, nextEntry: DrinkEn
     return false
   }
 
-  const currentEntry = state.drinkEntries[index]
-  const clampedPercent = clampNumber(nextEntry.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX)
-  const endTimestampMs = typeof nextEntry.endTimestampMs === 'number'
-    ? Math.max(nextEntry.timestampMs, nextEntry.endTimestampMs)
-    : (nextEntry.timestampMs + estimateDrinkDurationMs(nextEntry.ml, clampedPercent))
-  const fallbackPlannedEndTimestampMs = getDrinkEntryPlannedEndTimestampMs(currentEntry)
-
   const updatedEntry: DrinkEntry = {
     ml: clampNumber(nextEntry.ml, 0, 2000),
-    percent: clampedPercent,
+    percent: clampNumber(nextEntry.percent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
     timestampMs: nextEntry.timestampMs,
-    endTimestampMs,
-    plannedEndTimestampMs: typeof nextEntry.plannedEndTimestampMs === 'number'
-      ? Math.max(endTimestampMs, nextEntry.plannedEndTimestampMs)
-      : Math.max(endTimestampMs, fallbackPlannedEndTimestampMs),
   }
 
   const nextEntries = [...state.drinkEntries]

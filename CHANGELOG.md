@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-11-09
+
+The drink log is now the single source of truth. The countdown and the BAC figures (current, peak, time to peak) are worked out from the log every time they are shown, so adding, editing or deleting a drink always updates them.
+
+### Changed
+- A drink in the log is its start time, amount and alcohol %. Its end time is always calculated from those (whole minutes, for example 175 ml at 13.5 % = 47 min), never stored.
+- The countdown is read from the log in order. A drink that is unfinished when the next one is logged adds the time it had left at that moment after the `+` (a drink already finished adds nothing). The last drink is the current countdown. The `+` holds while a drink is active and counts down only when none is: between drinks and after the last one finishes.
+- Drink durations are rounded to whole minutes (the smallest drink, 25 ml at 1 %, now lasts 1 minute instead of 30 seconds).
+- BAC absorption uses each drink's full calculated duration.
+- Updated to Even Hub SDK 0.0.16, CLI 0.2.0 and Vitest 5 earlier in this release line; this version requires Even App 2.2.10 or later.
+
+### Fixed
+- Editing a drink's amount or alcohol % now changes the countdown straight away (before, a stored planned end kept the old value).
+- Deleting a drink removes everything it added to the countdown.
+- The countdown no longer shows a wrong or stale `+` figure after edits or deletes.
+
+### Removed
+- The **End time** field in the phone's Edit drink form: the end is calculated from the drink.
+- Stored end times and planned end times in saved data. Older saves still load; those fields are ignored.
+
 ## [1.6.3] - 2026-11-09
 
 ### Changed

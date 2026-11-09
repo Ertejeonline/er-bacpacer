@@ -15,10 +15,9 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - adjust default volume (`ml`) and strength (`%`)
   - load a saved preset on glasses to replace the current default volume and strength
   - confirm `Add drink` to store an entry
-  - each entry has start and computed end time
-  - if a new drink is logged before the previous one finishes, the interrupted remainder is carried forward in the glasses HUD instead of being lost
-  - once active countdown reaches zero, the carry-over immediately becomes a live countdown with a leading plus (for example `+ 12`) and decrements until it reaches zero
-  - if another drink is logged while carry-over is counting down, the current carry-over remainder is preserved and displayed alongside the new active timer (for example `42 +8`)
+  - each entry is a start time, amount and alcohol %; its end time is calculated from those
+  - the countdown is worked out from the log every time: a drink cut short by the next one adds the time it had left at that moment after the `+` in the glasses HUD (for example `42 +8`), the last drink is the current countdown, and the carry-over only counts down when no drink is active (between drinks and after the last one)
+  - editing, adding or deleting a drink updates the countdown and BAC straight away, because they come from the same log
 - BAC estimate model:
   - tracks current BAC and peak BAC
   - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
@@ -87,8 +86,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
 
 - Persisted state key: `bacpacer.persisted.v1`
 - Drink history and saved presets are persisted via bridge storage (with browser localStorage fallback).
-- The top-right standby countdown persists interrupted carry-over separately and decrements it in real time once active drink time ends.
-- Carry-over countdown progress is persisted at minute boundaries so reconnects or crashes resume with the correct remaining `+` minutes.
+- The top-right standby countdown stores nothing of its own: it is recalculated from the drink log each time it is shown, so reconnects, crashes and edits always give the same figures.
 - Drinks and presets enforce a minimum strength of `1%` ABV. Values below `1` are clamped to `1`.
 
 ## Stability & Connection Resilience

@@ -1,6 +1,6 @@
 # Bacpacer (Even G2)
 
-Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 1.6.3, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
+Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.0.0, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
 
 Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; release notes in `CHANGELOG.md`.
 
@@ -17,7 +17,7 @@ Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; re
 
 ## App-specific rules
 - Menu: Stand by, Log a drink, Summary, Presets.
-- Interrupted drink remainders are carried over (format like `42 +8`). Keep that behavior when changing timer code.
+- The drink log is the single source of truth: a drink is its start time, amount (ml) and alcohol %. Its end is always calculated (start + ml x % / 50 min), never stored. The countdown and BAC are worked out from the log every time. Going through the log in order: a drink cut short by the next one adds the time it had left at that moment to the carry-over (the figure after the `+`, like `42 +8`; a drink already finished adds nothing); the last drink is the current countdown while unfinished; the carry-over holds while a drink is active and counts down only when none is (between drinks and after the last one). Durations are whole minutes. Keep it that way: no stored end times, planned ends or running carry-over totals.
 - Presets sync from the phone to the glasses.
 - Bump `version` in both `package.json` and `app.json` for each release, and add a CHANGELOG entry.
 - Tests live in `tests/g2/` (renderer, state) and `tests/shared/` (serializer). Run `npm run test` after changing them.
