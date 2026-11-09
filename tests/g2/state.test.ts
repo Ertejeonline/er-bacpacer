@@ -8,6 +8,7 @@ import {
   flushPersistedState,
   formatBacGdl,
   formatDrinkEntryTime,
+  calculateWidmarkFactor,
   getBacEstimateAt,
   getBacSettings,
   getBridge,
@@ -20,12 +21,10 @@ import {
   removeDrinkEntry,
   setAddDrinkSubmenuVisible,
   setBacSettings,
-  setBpm,
   setDrinkMl,
   setDrinkPercent,
   setFocusedMenuItem,
   setMenuItem,
-  setPacerRunning,
   setBridge,
   state,
   storeCurrentDrink,
@@ -42,8 +41,6 @@ function resetState(): void {
   state.addDrinkSubmenuVisible = false
   state.currentMenuItem = 'standBy'
   state.focusedMenuItem = 'standBy'
-  state.pacerRunning = false
-  state.bpm = 120
   state.drinkMl = 175
   state.drinkPercent = 13.5
   state.drinkEntries = []
@@ -313,20 +310,16 @@ describe('g2/state', () => {
     expect(getDrinkPresets()[0]?.percent).toBe(1)
   })
 
-  it('clamps bpm, ml and percent values', () => {
-    setBpm(10)
+  it('clamps ml and percent values', () => {
     setDrinkMl(-50)
     setDrinkPercent(120)
 
-    expect(state.bpm).toBe(60)
     expect(state.drinkMl).toBe(0)
     expect(state.drinkPercent).toBe(100)
 
-    setBpm(999)
     setDrinkMl(99999)
     setDrinkPercent(-1)
 
-    expect(state.bpm).toBe(200)
     expect(state.drinkMl).toBe(2000)
     expect(state.drinkPercent).toBe(1)
   })
@@ -388,14 +381,25 @@ describe('g2/state', () => {
     expect(() => getBacEstimateAt(Date.now())).not.toThrow()
   })
 
+  it('derives the Widmark factor from Watson body water divided by 0.8 x weight', () => {
+    // Man, 75 kg, 175 cm, 30: body water 43.6 L -> 43.6 / (0.8 x 75) = 0.727
+    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 30, heightCm: 175, weightKg: 75 })).toBeCloseTo(0.727, 2)
+    // Woman, 65 kg, 165 cm: body water 31.57 L -> 31.57 / (0.8 x 65) = 0.607
+    expect(calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 30, heightCm: 165, weightKg: 65 })).toBeCloseTo(0.607, 2)
+    // Age only changes the male figure
+    const young = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 20, heightCm: 165, weightKg: 65 })
+    const old = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 80, heightCm: 165, weightKg: 65 })
+    expect(young).toBe(old)
+    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 80, heightCm: 175, weightKg: 75 }))
+      .toBeLessThan(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 20, heightCm: 175, weightKg: 75 }))
+  })
+
   it('hydrates persisted state from bridge, prunes old entries, and re-saves', async () => {
     const now = Date.now()
     const oldEntryTs = now - (25 * 60 * 60 * 1000)
 
     const setLocalStorage = vi.fn(async () => undefined)
     const getLocalStorage = vi.fn(async () => JSON.stringify({
-      bpm: 30,
-      pacerRunning: true,
       drinkMl: 2500,
       drinkPercent: -5,
       drinkEntries: [
@@ -423,8 +427,6 @@ describe('g2/state', () => {
 
     await loadPersistedState()
 
-    expect(state.bpm).toBe(60)
-    expect(state.pacerRunning).toBe(true)
     expect(state.drinkMl).toBe(2000)
     expect(state.drinkPercent).toBe(1)
     expect(state.drinkEntries).toHaveLength(1)
@@ -493,13 +495,6 @@ describe('g2/state', () => {
     expect(formatBacGdl(0)).toBe('0.000')
     expect(formatBacGdl(0.12345)).toBe('0.123')
     expect(formatDrinkEntryTime(0)).toMatch(/^\d{2}:\d{2}$/)
-  })
-
-  it('updates pacer running state', () => {
-    setPacerRunning(true)
-    expect(state.pacerRunning).toBe(true)
-    setPacerRunning(false)
-    expect(state.pacerRunning).toBe(false)
   })
 
   it('captures persisted state and UI flags in a background snapshot, and restores them', () => {
@@ -582,8 +577,7 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
       setLocalStorage,
     } as never)
 
-    setBpm(90)
-    setBpm(100)
+    setDrinkMl(250)
     setDrinkMl(300)
 
     // Nothing should have been written yet; the write is debounced.
@@ -596,7 +590,6 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
     expect(firstCall).toBeDefined()
     const payload = firstCall?.[1]
     expect(typeof payload).toBe('string')
-    expect(JSON.parse(payload).bpm).toBe(100)
     expect(JSON.parse(payload).drinkMl).toBe(300)
   })
 
@@ -607,7 +600,7 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
       setLocalStorage,
     } as never)
 
-    setPacerRunning(true)
+    setDrinkMl(300)
     await flushPersistedState()
     expect(setLocalStorage).toHaveBeenCalledTimes(1)
 

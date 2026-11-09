@@ -74,8 +74,6 @@ type ModeledDrinkEntry = {
 const PERSISTENCE_KEY = 'bacpacer.persisted.v1'
 
 type PersistedState = {
-  bpm: number
-  pacerRunning: boolean
   drinkMl: number
   drinkPercent: number
   drinkEntries: DrinkEntry[]
@@ -99,12 +97,16 @@ const FOOD_PROFILE_ABSORPTION_MULTIPLIER: Record<BacFoodProfile, number> = {
 const FOOD_PROFILE_BIOAVAILABILITY: Record<BacFoodProfile, number> = {
   empty: 1.00,
   light: 0.88,
-  heavy: 0.75,
+  heavy: 0.85,
 }
 
 const BAC_MODEL_ABSORPTION_MINUTES = 30
-const BAC_MODEL_BODY_WATER_FACTOR_MIN = 0.4
-const BAC_MODEL_BODY_WATER_FACTOR_MAX = 0.9
+// Share of blood that is water. Alcohol spreads through body water, so the
+// volume it is diluted into, measured as blood, is body water / 0.8.
+const BAC_MODEL_BLOOD_WATER_FRACTION = 0.8
+// Sanity limits for the Widmark factor r (typically 0.5-0.8).
+const BAC_MODEL_WIDMARK_FACTOR_MIN = 0.4
+const BAC_MODEL_WIDMARK_FACTOR_MAX = 0.9
 const DRINK_PERCENT_MIN = 1
 const DRINK_PERCENT_MAX = 100
 
@@ -119,8 +121,6 @@ const DEFAULT_BAC_SETTINGS: BacUserSettings = {
 }
 
 const DEFAULT_PERSISTED_STATE: PersistedState = {
-  bpm: 120,
-  pacerRunning: false,
   drinkMl: 175,
   drinkPercent: 13.5,
   drinkEntries: [],
@@ -134,8 +134,6 @@ export const state = {
   addDrinkSubmenuVisible: false,
   currentMenuItem: 'standBy' as MenuItem,
   focusedMenuItem: 'standBy' as MenuItem,
-  pacerRunning: DEFAULT_PERSISTED_STATE.pacerRunning,
-  bpm: DEFAULT_PERSISTED_STATE.bpm,
   drinkMl: DEFAULT_PERSISTED_STATE.drinkMl,
   drinkPercent: DEFAULT_PERSISTED_STATE.drinkPercent,
   drinkEntries: [...DEFAULT_PERSISTED_STATE.drinkEntries],
@@ -255,7 +253,11 @@ function calculateAgeYearsFromDateOfBirth(dateOfBirth: string, now: Date = new D
   return years
 }
 
-function calculateBodyWaterFactor(settings: {
+// Widmark factor r: the share of body weight that alcohol is diluted into.
+// Total body water comes from the Watson et al. (1980) equations (height in cm,
+// weight in kg, age in years; age only matters for men), then
+// r = body water / (0.8 x weight). A 75 kg, 175 cm, 30 year old man gives about 0.73.
+export function calculateWidmarkFactor(settings: {
   sexAtBirth: BacSexAtBirth
   ageYears: number
   heightCm: number
@@ -265,8 +267,10 @@ function calculateBodyWaterFactor(settings: {
     ? (2.447 - (0.09516 * settings.ageYears) + (0.1074 * settings.heightCm) + (0.3362 * settings.weightKg))
     : (-2.097 + (0.1069 * settings.heightCm) + (0.2466 * settings.weightKg))
 
-  const rawFactor = settings.weightKg > 0 ? tbwLiters / settings.weightKg : BAC_MODEL_BODY_WATER_FACTOR_MIN
-  return clampNumber(rawFactor, BAC_MODEL_BODY_WATER_FACTOR_MIN, BAC_MODEL_BODY_WATER_FACTOR_MAX)
+  const rawFactor = settings.weightKg > 0
+    ? tbwLiters / (BAC_MODEL_BLOOD_WATER_FRACTION * settings.weightKg)
+    : BAC_MODEL_WIDMARK_FACTOR_MIN
+  return clampNumber(rawFactor, BAC_MODEL_WIDMARK_FACTOR_MIN, BAC_MODEL_WIDMARK_FACTOR_MAX)
 }
 
 function normalizeBacSettings(value: Partial<BacUserSettings> | undefined): BacUserSettings {
@@ -321,8 +325,6 @@ const DRINK_ENTRY_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function toPersistedState(): PersistedState {
   return {
-    bpm: clampNumber(state.bpm, 60, 200),
-    pacerRunning: Boolean(state.pacerRunning),
     drinkMl: clampNumber(state.drinkMl, 0, 2000),
     drinkPercent: clampNumber(state.drinkPercent, DRINK_PERCENT_MIN, DRINK_PERCENT_MAX),
     drinkEntries: state.drinkEntries.slice(0, 500).map((entry) => ({
@@ -442,12 +444,6 @@ export function flushPersistedState(): Promise<void> {
 function applyHydratedState(raw: string): void {
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedState>
-    if (typeof parsed.bpm === 'number') {
-      state.bpm = clampNumber(parsed.bpm, 60, 200)
-    }
-    if (typeof parsed.pacerRunning === 'boolean') {
-      state.pacerRunning = parsed.pacerRunning
-    }
     if (typeof parsed.drinkMl === 'number') {
       state.drinkMl = clampNumber(parsed.drinkMl, 0, 2000)
     }
@@ -570,16 +566,6 @@ export function setAddDrinkSubmenuVisible(visible: boolean): void {
   state.addDrinkSubmenuVisible = visible
 }
 
-export function setBpm(value: number): void {
-  state.bpm = clampNumber(value, 60, 200)
-  savePersistedState()
-}
-
-export function setPacerRunning(running: boolean): void {
-  state.pacerRunning = running
-  savePersistedState()
-}
-
 export function setDrinkMl(value: number): void {
   state.drinkMl = clampNumber(value, 0, 2000)
   savePersistedState()
@@ -621,7 +607,7 @@ export function getBacEstimateAt(nowMs: number = Date.now()): BacEstimate {
   if (entries.length === 0) return createZeroBacEstimate()
 
   const settings = state.bacSettings
-  const bodyWaterFactor = calculateBodyWaterFactor(settings)
+  const widmarkFactor = calculateWidmarkFactor(settings)
   const eliminationRatePerHour = METABOLISM_LEVEL_ELIMINATION_RATE[settings.metabolismLevel]
 
   const foodAbsorptionMultiplier = FOOD_PROFILE_ABSORPTION_MULTIPLIER[settings.foodProfile]
@@ -656,7 +642,7 @@ export function getBacEstimateAt(nowMs: number = Date.now()): BacEstimate {
 
   const firstDrinkAtMs = modeledEntries[0].startMs
   const hoursSinceFirstDrink = Math.max(0, (nowMs - firstDrinkAtMs) / 3_600_000)
-  const distributionLiters = bodyWaterFactor * settings.weightKg
+  const distributionLiters = widmarkFactor * settings.weightKg
   const totalEthanolGrams = modeledEntries.reduce((sum, entry) => sum + entry.ethanolGrams, 0)
   const maxRawBac = distributionLiters > 0
     ? totalEthanolGrams / (distributionLiters * 10)

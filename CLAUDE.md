@@ -1,6 +1,6 @@
 # Bacpacer (Even G2)
 
-Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.0.1, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
+Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.0.2, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
 
 Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; release notes in `CHANGELOG.md`.
 
