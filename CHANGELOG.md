@@ -14,7 +14,7 @@ The drink log is now the single source of truth. The countdown and the BAC figur
 - The countdown is read from the log in order. A drink that is unfinished when the next one is logged adds the time it had left at that moment after the `+` (a drink already finished adds nothing). The last drink is the current countdown. The `+` holds while a drink is active and counts down only when none is: between drinks and after the last one finishes.
 - Drink durations are rounded to whole minutes (the smallest drink, 25 ml at 1 %, now lasts 1 minute instead of 30 seconds).
 - BAC absorption uses each drink's full calculated duration.
-- Updated to Even Hub SDK 0.0.16, CLI 0.2.0 and Vitest 5 earlier in this release line; this version requires Even App 2.2.10 or later.
+- Builds on the Even Hub SDK 0.0.16 / CLI 0.2.0 / Vitest 5 update from 1.5.14; still requires Even App 2.2.10 or later.
 
 ### Fixed
 - Editing a drink's amount or alcohol % now changes the countdown straight away (before, a stored planned end kept the old value).
