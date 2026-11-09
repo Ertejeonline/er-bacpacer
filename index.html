@@ -48,8 +48,10 @@
 
         <p id="status" class="text-small-body"></p>
 
-        <p class="panel-title text-normal-title">Event log</p>
-        <textarea id="event-log" class="event-log" readonly></textarea>
+        <div id="eventLogSection" hidden>
+            <p class="panel-title text-normal-title">Event log</p>
+            <textarea id="event-log" class="event-log" readonly></textarea>
+        </div>
     </div>
 
     <div id="confirmResetModal" class="modal-overlay hidden" role="dialog" aria-modal="true"
@@ -248,6 +250,8 @@
             </div>
         </div>
     </div>
+
+    <footer class="app-footer">Bacpacer <span id="appVersion"></span></footer>
 
     <script type="module" src="/src/main.ts"></script>
 </body>

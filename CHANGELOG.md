@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-11-09
+
+### Changed
+- The phone's event log (title and box) is hidden. It is controlled by `SHOW_EVENT_LOG` in `src/main.ts`; set it to `true` to show the log. Events are still recorded.
+
+### Added
+- Phone footer showing the app version (for example `Bacpacer v1.6.3`), in small print that meets WCAG AA contrast.
+
 ## [1.6.2] - 2026-11-09
 
 ### Changed

@@ -10,6 +10,9 @@ import {
   type DrinkFieldLimits,
 } from './drink-input'
 
+// Phone UI: set to true to show the event log (title and box) under the status line.
+const SHOW_EVENT_LOG = false
+
 function updateStatus(text: string) {
   console.log(`[ui] ${text}`)
   const el = document.getElementById('status')
@@ -863,6 +866,14 @@ async function boot() {
       closeLoadPresetConfirm()
     }
   })
+
+  // The event log stays in the code (appendEventLog still records) but is only
+  // shown when SHOW_EVENT_LOG is true.
+  const eventLogSection = document.getElementById('eventLogSection')
+  if (eventLogSection) eventLogSection.hidden = !SHOW_EVENT_LOG
+
+  const appVersionEl = document.getElementById('appVersion')
+  if (appVersionEl) appVersionEl.textContent = `v${__APP_VERSION__}`
 
   void actions.connect().catch((e) => {
     console.error('[app-loader] auto-connect failed', e)
