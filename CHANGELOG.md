@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-11-09
+
+### Removed
+- Tapping once on the Stand by screen no longer hides the display. Even Realities offers this built in.
+
 ## [2.0.0] - 2026-11-09
 
 The drink log is now the single source of truth. The countdown and the BAC figures (current, peak, time to peak) are worked out from the log every time they are shown, so adding, editing or deleting a drink always updates them.

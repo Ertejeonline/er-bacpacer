@@ -27,8 +27,6 @@ import {
   initMenu,
   menuItemFromIndex,
   resetRendererSession,
-  resetStandbyHudVisibility,
-  toggleStandbyHudVisibility,
   updateMenuDisplay,
   updateTopRightCountdownOnly,
 } from '../../g2/renderer'
@@ -44,7 +42,6 @@ function makeBridgeMocks() {
 describe('g2/renderer', () => {
   beforeEach(() => {
     resetRendererSession()
-    resetStandbyHudVisibility()
 
     state.menuVisible = true
     state.addDrinkSubmenuVisible = false
@@ -182,20 +179,6 @@ describe('g2/renderer', () => {
     expect(rightPanel?.content).toBe('Add presets from phone')
   })
 
-  it('toggles standby hud only in standby detail context', () => {
-    state.menuVisible = true
-    expect(toggleStandbyHudVisibility()).toBe(false)
-
-    state.menuVisible = false
-    state.currentMenuItem = 'standBy'
-    expect(toggleStandbyHudVisibility()).toBe(true)
-    expect(toggleStandbyHudVisibility()).toBe(false)
-
-    state.menuVisible = true
-    expect(toggleStandbyHudVisibility()).toBe(false)
-  })
-
-
   it('updates top-right countdown only after containers exist', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
@@ -276,7 +259,7 @@ describe('g2/renderer', () => {
     expect(topRightUpdate?.content).toBe('+ 3')
   })
 
-  it('shows current time on top-left in standby detail and hides it with standby hud', async () => {
+  it('shows current time on top-left in standby detail', async () => {
     const bridge = makeBridgeMocks()
     setBridge(bridge as never)
     vi.spyOn(Date, 'now').mockReturnValue(0)
@@ -291,17 +274,6 @@ describe('g2/renderer', () => {
 
     expect(visibleTopLeft).toBeDefined()
     expect(visibleTopLeft?.content).toMatch(/^\d{2}:\d{2}$/)
-
-    bridge.textContainerUpgrade.mockClear()
-    expect(toggleStandbyHudVisibility()).toBe(true)
-    await updateMenuDisplay()
-
-    const hiddenTopLeft = bridge.textContainerUpgrade.mock.calls
-      .map((args) => args[0] as { containerID?: number; content?: string })
-      .find((payload) => payload.containerID === 1)
-
-    expect(hiddenTopLeft).toBeDefined()
-    expect(hiddenTopLeft?.content).toBe(' ')
   })
 
   it('forces next render to rebuild layout after a text upgrade failure', async () => {

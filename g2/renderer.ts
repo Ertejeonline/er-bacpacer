@@ -29,7 +29,6 @@ const ADD_DRINK_MENU_ITEMS = [
 let containersCreated = false
 type LayoutMode = 'main-menu' | 'adddrink-menu' | 'presets-menu' | 'detail' | 'standby-detail'
 let currentLayoutMode: LayoutMode | null = null
-let standbyHudHidden = false
 
 type RenderFailureHandler = (err: unknown) => void
 let renderFailureHandler: RenderFailureHandler | null = null
@@ -101,23 +100,8 @@ function isStandbyDetailContext(): boolean {
   return !state.menuVisible && state.currentMenuItem === 'standBy'
 }
 
-export function isStandbyHudHidden(): boolean {
-  return standbyHudHidden
-}
-
-export function toggleStandbyHudVisibility(): boolean {
-  if (!isStandbyDetailContext()) return standbyHudHidden
-  standbyHudHidden = !standbyHudHidden
-  return standbyHudHidden
-}
-
-export function resetStandbyHudVisibility(): void {
-  standbyHudHidden = false
-}
-
 function getTopLeftContent(): string {
   if (isStandbyDetailContext()) {
-    if (standbyHudHidden) return ' '
     return formatDrinkEntryTime(Date.now())
   }
 
@@ -127,8 +111,6 @@ function getTopLeftContent(): string {
 }
 
 function getTopRightContent(): string {
-  if (standbyHudHidden && isStandbyDetailContext()) return ' '
-
   const countdown = getStandbyCountdown(Date.now())
   if (!countdown) return ' '
   if (countdown.activeMinutes > 0 && countdown.carryOverMinutes > 0) {
@@ -202,8 +184,6 @@ function getMainRightContent(estimate: BacEstimate = getBacEstimateAt()): string
 }
 
 function getBottomRightContent(estimate: BacEstimate = getBacEstimateAt()): string {
-  if (standbyHudHidden && isStandbyDetailContext()) return ' '
-
   if (estimate.bacGdl <= 0) return ' '
 
   const trendMarker = getBacTrendMarker(estimate.isRisingToPeak, estimate.bacGdl)
@@ -211,8 +191,6 @@ function getBottomRightContent(estimate: BacEstimate = getBacEstimateAt()): stri
 }
 
 function getBottomLeftContent(estimate: BacEstimate = getBacEstimateAt()): string {
-  if (standbyHudHidden && isStandbyDetailContext()) return ' '
-
   if (estimate.bacGdl <= 0 || !estimate.isRisingToPeak) return ' '
 
   const peakBac = formatBacGdl(estimate.peakBacGdl)
@@ -396,10 +374,6 @@ async function upgradeTextContainerInternal(target: TextUpgradeTarget): Promise<
 
 async function updateMenuDisplayInternal(): Promise<void> {
   if (!getBridge()) return
-
-  if (!isStandbyDetailContext() && standbyHudHidden) {
-    standbyHudHidden = false
-  }
 
   const targetLayoutMode: LayoutMode = !state.menuVisible
     ? (state.currentMenuItem === 'standBy' ? 'standby-detail' : (state.currentMenuItem === 'presets' ? 'presets-menu' : 'detail'))
@@ -621,6 +595,5 @@ export function resetRendererSession(): void {
   containersCreated = false
   currentLayoutMode = null
   resetBridgeSerializer()
-  standbyHudHidden = false
   consecutiveRenderFailures = 0
 }

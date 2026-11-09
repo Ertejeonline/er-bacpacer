@@ -28,11 +28,9 @@ import {
 } from './state'
 import {
   addDrinkSubmenuItemFromIndex,
-  isStandbyHudHidden,
   menuItemFromIndex,
   resetRendererSession,
   setRenderFailureHandler,
-  toggleStandbyHudVisibility,
   updateMenuDisplay,
   updateTopRightCountdownOnly,
 } from './renderer'
@@ -56,7 +54,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let unsubscribeEvenHubEvent: (() => void) | null = null
   let unsubscribeDeviceStatus: (() => void) | null = null
   let refreshTimerId: number | null = null
-  let lastStandbyHudToggleAtMs = 0
   let displayRefreshQueued = false
   let teardownRegistered = false
   // Opening and closing the system contextual menu also fires
@@ -85,7 +82,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
 
     const tick = () => {
       if (!connected || !appInForeground) return
-      if (!state.menuVisible && state.currentMenuItem === 'standBy' && isStandbyHudHidden()) return
       queueDisplayRefresh()
     }
 
@@ -127,26 +123,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   const refreshDisplayIfActive = () => {
     if (!connected || !appInForeground) return
     queueDisplayRefresh()
-  }
-
-  const isClickEventType = (eventType: number | undefined, source: 'list' | 'text' | 'sys') => {
-    if (eventType === OsEventTypeList.CLICK_EVENT) return true
-    // SDK quirk: value 0 may be deserialized as undefined across event sources.
-    if (typeof eventType === 'undefined') return true
-    return false
-  }
-
-  const tryToggleStandbyHud = (eventType: number | undefined, source: 'list' | 'text' | 'sys'): boolean => {
-    const atStandbyDetail = !state.menuVisible && state.currentMenuItem === 'standBy'
-    if (!atStandbyDetail || !isClickEventType(eventType, source)) return false
-
-    const now = Date.now()
-    if ((now - lastStandbyHudToggleAtMs) < 250) return true
-    lastStandbyHudToggleAtMs = now
-
-    toggleStandbyHudVisibility()
-    refreshDisplayIfActive()
-    return true
   }
 
   const handleDoubleClickNavigation = (bridge: Awaited<ReturnType<typeof waitForEvenAppBridge>>) => {
@@ -349,10 +325,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
             // Some firmware paths can miss FOREGROUND_ENTER after overlay dismissal.
             inferForegroundFromInput()
 
-            if (tryToggleStandbyHud(event.sysEvent.eventType, 'sys')) {
-              return
-            }
-
             if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
               handleDoubleClickNavigation(bridge)
               return
@@ -365,10 +337,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               appendEventLog('Lifecycle: exit dialog dismissed by user input')
               exitDialogPending = false
               clearExitDialogRecoveryTimer()
-            }
-
-            if (tryToggleStandbyHud(event.listEvent.eventType, 'list')) {
-              return
             }
 
             const listEventType = event.listEvent.eventType
@@ -454,9 +422,6 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
               clearExitDialogRecoveryTimer()
             }
 
-            if (tryToggleStandbyHud(event.textEvent.eventType, 'text')) {
-              return
-            }
             return
           }
         } catch (err) {
