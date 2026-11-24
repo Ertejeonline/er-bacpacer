@@ -9,6 +9,7 @@ import {
   formatBacGdl,
   formatDrinkEntryTime,
   calculateWidmarkFactor,
+  eliminationShare,
   getBacEstimateAt,
   getBacSettings,
   getBridge,
@@ -374,6 +375,79 @@ describe('g2/state', () => {
     expect(settings.dateOfBirth).toBe(dob)
     expect(settings.ageYears).toBeGreaterThanOrEqual(39)
     expect(settings.ageYears).toBeLessThanOrEqual(40)
+  })
+
+  // Same model as the Android app: these are the reference values of its
+  // BacCalculatorTest (permille there, g/dL here = permille / 10).
+  function expectAndroidReference(
+    settings: Partial<typeof state.bacSettings>,
+    drinks: Array<[ml: number, percent: number, minutesFromNow: number]>,
+    bacPermille: number, peakPermille: number, peakMin: number, soberMin: number,
+  ): void {
+    const now = 1_800_000_000_000
+    state.bacSettings = { ...DEFAULT_BAC_SETTINGS, dateOfBirth: null, ...settings }
+    state.drinkEntries = drinks.map(([ml, percent, at]) => ({ ml, percent, timestampMs: now + at * MIN }))
+    const e = getBacEstimateAt(now)
+    expect(e.bacGdl).toBeCloseTo(bacPermille / 10, 8)
+    expect(e.peakBacGdl).toBeCloseTo(peakPermille / 10, 8)
+    expect(e.peakAtMs).toBe(now + peakMin * MIN)
+    expect(e.estimatedSoberAtMs).toBe(now + soberMin * MIN)
+    expect(e.isRisingToPeak).toBe(true)
+  }
+
+  it('matches the Android app: one beer 10 minutes ago, light meal', () => {
+    expectAndroidReference(
+      { sexAtBirth: 'male', weightKg: 75, heightCm: 175, ageYears: 30, metabolismLevel: 3, foodProfile: 'light' },
+      [[500, 5, -10]],
+      0.027430930613171724, 0.15952554438722488, 85, 198,
+    )
+  })
+
+  it('matches the Android app: three wines, empty stomach', () => {
+    expectAndroidReference(
+      { sexAtBirth: 'female', weightKg: 62, heightCm: 165, ageYears: 40, metabolismLevel: 2, foodProfile: 'empty' },
+      [[175, 13.5, -150], [175, 13.5, -100], [175, 13.5, -50]],
+      1.0180584234258325, 1.133470630492922, 27, 693,
+    )
+  })
+
+  it('matches the Android app: heavy meal', () => {
+    expectAndroidReference(
+      { sexAtBirth: 'male', weightKg: 90, heightCm: 185, ageYears: 25, metabolismLevel: 4, foodProfile: 'heavy' },
+      [[40, 40, -20], [330, 5, -5]],
+      0.0205868424081271, 0.0702016751284952, 87, 140,
+    )
+  })
+
+  it('elimination slows down at low levels', () => {
+    expect(eliminationShare(1)).toBeCloseTo(1, 12)
+    expect(eliminationShare(0)).toBe(0)
+    expect(eliminationShare(0.5)).toBeGreaterThan(0.9)
+    expect(eliminationShare(0.1)).toBeCloseTo(0.7, 9)
+  })
+
+  it('more food means a lower and later peak and an earlier zero', () => {
+    const now = 1_800_000_000_000
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: now }]
+    const results = (['empty', 'light', 'normal', 'heavy'] as const).map((foodProfile) => {
+      state.bacSettings = { ...DEFAULT_BAC_SETTINGS, foodProfile }
+      return getBacEstimateAt(now)
+    })
+    for (let i = 1; i < results.length; i += 1) {
+      expect(results[i].peakBacGdl).toBeLessThan(results[i - 1].peakBacGdl)
+      expect(results[i].peakAtMs!).toBeGreaterThanOrEqual(results[i - 1].peakAtMs!)
+      expect(results[i].estimatedSoberAtMs!).toBeLessThanOrEqual(results[i - 1].estimatedSoberAtMs!)
+    }
+  })
+
+  it('ignores drinks that have not started yet in the BAC estimate', () => {
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: 2 * 60 * MIN }]
+    expect(getBacEstimateAt(60 * MIN).peakBacGdl).toBe(0)
+  })
+
+  it('keeps a normal meal setting', () => {
+    setBacSettings({ foodProfile: 'normal' })
+    expect(getBacSettings().foodProfile).toBe('normal')
   })
 
   it('BAC estimate runs without error when body water factor is computed internally', () => {

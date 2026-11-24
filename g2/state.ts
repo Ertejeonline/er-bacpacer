@@ -19,7 +19,7 @@ export type DrinkPreset = {
   percent: number
 }
 
-export type BacFoodProfile = 'empty' | 'light' | 'heavy'
+export type BacFoodProfile = 'empty' | 'light' | 'normal' | 'heavy'
 export type BacSexAtBirth = 'male' | 'female'
 export type BacMetabolismLevel = 1 | 2 | 3 | 4 | 5
 
@@ -64,13 +64,6 @@ export type StandbyCountdown = {
   carryOverMinutes: number
 }
 
-type ModeledDrinkEntry = {
-  startMs: number
-  endMs: number
-  ethanolGrams: number
-  totalAssimilationMinutes: number
-}
-
 const PERSISTENCE_KEY = 'bacpacer.persisted.v1'
 
 type PersistedState = {
@@ -88,19 +81,33 @@ const BAC_SETTINGS_BOUNDS = {
   heightCm: { min: 130, max: 230 },
 } as const
 
-const FOOD_PROFILE_ABSORPTION_MULTIPLIER: Record<BacFoodProfile, number> = {
-  empty: 1.0,
-  light: 0.8,
-  heavy: 0.6,
+// What's in the stomach. Same figures as the Android app (FoodProfile in
+// bacpacer's BacCalculator.kt), calibrated against studies: after an ordinary
+// meal the peak of a small dose is ~42-57 % lower than fasting (Jones &
+// Jonsson 1997) and the liver clears alcohol ~25-45 % faster (Ramchandani et
+// al. 2001).
+// - extraAbsorptionMinutes: absorption runs over the drink's duration + this
+// - bioavailability: share of the alcohol that reaches the blood
+// - eliminationMultiplier: elimination rate x this (faster liver after a meal)
+export const FOOD_PROFILES: Record<BacFoodProfile, {
+  extraAbsorptionMinutes: number
+  bioavailability: number
+  eliminationMultiplier: number
+}> = {
+  empty: { extraAbsorptionMinutes: 30, bioavailability: 1.0, eliminationMultiplier: 1.0 },
+  light: { extraAbsorptionMinutes: 45, bioavailability: 0.9, eliminationMultiplier: 1.1 },
+  normal: { extraAbsorptionMinutes: 60, bioavailability: 0.82, eliminationMultiplier: 1.25 },
+  heavy: { extraAbsorptionMinutes: 75, bioavailability: 0.76, eliminationMultiplier: 1.35 },
 }
 
-const FOOD_PROFILE_BIOAVAILABILITY: Record<BacFoodProfile, number> = {
-  empty: 1.00,
-  light: 0.88,
-  heavy: 0.85,
-}
+// Michaelis-Menten constant of alcohol elimination, in permille (g/L): the
+// liver works at nearly full speed above a few tenths of a permille and slows
+// down as the level falls towards zero.
+const BAC_MODEL_ELIMINATION_KM_PERMILLE = 0.05
+// Below this (permille) the estimate counts as zero: it would show as 0.000 anyway.
+const BAC_MODEL_ZERO_PERMILLE = 0.005
+const BAC_MODEL_MAX_PROJECTION_MS = 72 * 60 * 60 * 1000
 
-const BAC_MODEL_ABSORPTION_MINUTES = 30
 // Share of blood that is water. Alcohol spreads through body water, so the
 // volume it is diluted into, measured as blood, is body water / 0.8.
 const BAC_MODEL_BLOOD_WATER_FRACTION = 0.8
@@ -199,7 +206,7 @@ export function getDrinkEntryEndTimestampMs(entry: DrinkEntry): number {
 }
 
 function normalizeFoodProfile(value: unknown): BacFoodProfile {
-  if (value === 'empty' || value === 'light' || value === 'heavy') return value
+  if (value === 'empty' || value === 'light' || value === 'normal' || value === 'heavy') return value
   return DEFAULT_BAC_SETTINGS.foodProfile
 }
 
@@ -600,134 +607,90 @@ function createZeroBacEstimate(): BacEstimate {
   }
 }
 
+// Share of the metabolism level's elimination rate that applies at `bacPermille`:
+// C / (Km + C), scaled to exactly 1 at 1 permille (where elimination rates are
+// usually measured). About 0.95 at 0.5, 0.7 at 0.1; slightly above 1 higher up.
+export function eliminationShare(bacPermille: number): number {
+  if (bacPermille <= 0) return 0
+  const km = BAC_MODEL_ELIMINATION_KM_PERMILLE
+  return bacPermille / (km + bacPermille) * (km + 1)
+}
+
+// BAC model, the same as the Android app's BacCalculator (estimate):
+// - each drink is absorbed linearly from its start over (its duration + the
+//   food's extra minutes), and only the food's share of it reaches the blood
+// - absorbed grams raise BAC by grams / (Widmark r x weight)
+// - the liver removes alcohol at the metabolism level's rate x the food's
+//   multiplier, slowing down at low levels (eliminationShare)
+// Because elimination depends on the level, it is simulated minute by minute.
+// The grid is aligned so that "now" lands exactly on a step. Worked out in
+// permille (g/L) internally; the result is in g/dL (permille / 10).
 export function getBacEstimateAt(nowMs: number = Date.now()): BacEstimate {
   const entries = state.drinkEntries
-    .filter((entry) => (nowMs - getDrinkEntryEndTimestampMs(entry)) < DRINK_ENTRY_MAX_AGE_MS)
+    .filter((entry) => entry.timestampMs <= nowMs
+      && (nowMs - getDrinkEntryEndTimestampMs(entry)) < DRINK_ENTRY_MAX_AGE_MS
+      && entry.ml > 0)
     .sort((a, b) => a.timestampMs - b.timestampMs)
-  if (entries.length === 0) return createZeroBacEstimate()
-
   const settings = state.bacSettings
-  const widmarkFactor = calculateWidmarkFactor(settings)
-  const eliminationRatePerHour = METABOLISM_LEVEL_ELIMINATION_RATE[settings.metabolismLevel]
+  if (entries.length === 0 || settings.weightKg <= 0) return createZeroBacEstimate()
 
-  const foodAbsorptionMultiplier = FOOD_PROFILE_ABSORPTION_MULTIPLIER[settings.foodProfile]
-  const foodBioavailability = FOOD_PROFILE_BIOAVAILABILITY[settings.foodProfile]
-  const effectiveAbsorptionMinutes = BAC_MODEL_ABSORPTION_MINUTES / foodAbsorptionMultiplier
-  const modeledEntries: ModeledDrinkEntry[] = entries.map((entry) => {
-    const startMs = entry.timestampMs
-    const endMs = getDrinkEntryEndTimestampMs(entry)
-    const percentFraction = getPercentFraction(entry.percent)
-    const ethanolGrams = entry.ml * percentFraction * 0.789 * foodBioavailability
-    const drinkDurationMinutes = Math.max(0, (endMs - startMs) / 60_000)
-
-    return {
-      startMs,
-      endMs,
-      ethanolGrams,
-      totalAssimilationMinutes: drinkDurationMinutes + Math.max(0, effectiveAbsorptionMinutes),
-    }
-  })
-
-  const getAbsorbedAlcoholGramsAt = (targetMs: number): number => {
-    let absorbedAlcoholGramsAtTarget = 0
-    for (const entry of modeledEntries) {
-      const elapsedMinutes = Math.max(0, (targetMs - entry.startMs) / 60_000)
-      const absorbedFraction = entry.totalAssimilationMinutes <= 0
-        ? 1
-        : Math.min(1, elapsedMinutes / entry.totalAssimilationMinutes)
-      absorbedAlcoholGramsAtTarget += entry.ethanolGrams * absorbedFraction
-    }
-    return absorbedAlcoholGramsAtTarget
-  }
-
-  const firstDrinkAtMs = modeledEntries[0].startMs
-  const hoursSinceFirstDrink = Math.max(0, (nowMs - firstDrinkAtMs) / 3_600_000)
-  const distributionLiters = widmarkFactor * settings.weightKg
-  const totalEthanolGrams = modeledEntries.reduce((sum, entry) => sum + entry.ethanolGrams, 0)
-  const maxRawBac = distributionLiters > 0
-    ? totalEthanolGrams / (distributionLiters * 10)
-    : 0
-
-  const latestDrinkEndMs = modeledEntries.reduce(
-    (latestEndMs, entry) => Math.max(latestEndMs, entry.endMs),
-    modeledEntries[0].endMs,
-  )
-  const absorptionDoneAtMs = latestDrinkEndMs + (effectiveAbsorptionMinutes * 60_000)
-  const eliminationWindowMs = eliminationRatePerHour > 0
-    ? ((maxRawBac / eliminationRatePerHour) * 3_600_000)
-    : 0
-  const simulationEndMs = nowMs + Math.min(
-    72 * 3_600_000,
-    Math.max(4 * 3_600_000, (absorptionDoneAtMs - nowMs) + eliminationWindowMs + (2 * 3_600_000)),
-  )
-
-  type SimulationState = {
-    currentTimeMs: number
-    currentBac: number
-    absorbedAlcoholGrams: number
-  }
-
-  const advanceSimulationTo = (targetMs: number, simulation: SimulationState): void => {
-    if (targetMs <= simulation.currentTimeMs) return
-
-    const absorbedAlcoholAtTarget = getAbsorbedAlcoholGramsAt(targetMs)
-    const absorbedAlcoholDelta = Math.max(0, absorbedAlcoholAtTarget - simulation.absorbedAlcoholGrams)
-    const absorbedBacDelta = distributionLiters > 0
-      ? absorbedAlcoholDelta / (distributionLiters * 10)
-      : 0
-    const elapsedHours = Math.max(0, (targetMs - simulation.currentTimeMs) / 3_600_000)
-
-    simulation.currentBac = Math.max(0, simulation.currentBac + absorbedBacDelta - (eliminationRatePerHour * elapsedHours))
-    simulation.absorbedAlcoholGrams = absorbedAlcoholAtTarget
-    simulation.currentTimeMs = targetMs
-  }
-
+  const food = FOOD_PROFILES[settings.foodProfile]
+  const distributionLiters = calculateWidmarkFactor(settings) * settings.weightKg
   const stepMs = 60_000
-  const simulation: SimulationState = {
-    currentTimeMs: firstDrinkAtMs,
-    currentBac: 0,
-    absorbedAlcoholGrams: getAbsorbedAlcoholGramsAt(firstDrinkAtMs),
+  // Rates are stored in g/dL per hour; x 10 for permille.
+  const eliminationPerStep = METABOLISM_LEVEL_ELIMINATION_RATE[settings.metabolismLevel] * 10
+    * food.eliminationMultiplier * stepMs / 3_600_000
+  const extraAbsorptionMs = Math.round(food.extraAbsorptionMinutes * 60_000)
+
+  const modeled = entries.map((entry) => ({
+    startMs: entry.timestampMs,
+    absorbEndMs: getDrinkEntryEndTimestampMs(entry) + extraAbsorptionMs,
+    grams: entry.ml * getPercentFraction(entry.percent) * 0.789 * food.bioavailability,
+  }))
+  const lastAbsorptionEndMs = Math.max(...modeled.map((m) => m.absorbEndMs))
+  const isAbsorbing = (t: number): boolean => modeled.some((m) => t >= m.startMs && t < m.absorbEndMs)
+  const absorbedBetween = (a: number, b: number): number => modeled.reduce((sum, m) => {
+    const span = Math.max(1, m.absorbEndMs - m.startMs)
+    return sum + m.grams * Math.max(0, Math.min(b, m.absorbEndMs) - Math.max(a, m.startMs)) / span
+  }, 0)
+
+  const firstDrinkAtMs = modeled[0].startMs
+  const stepsBeforeNow = Math.ceil((nowMs - firstDrinkAtMs) / stepMs)
+  const values: number[] = [0]
+  const times: number[] = [nowMs - stepsBeforeNow * stepMs]
+  let t = times[0]
+  let bac = 0
+  const hardEndMs = nowMs + BAC_MODEL_MAX_PROJECTION_MS
+  while (t < hardEndMs) {
+    const next = t + stepMs
+    bac += absorbedBetween(t, next) / distributionLiters
+    bac = Math.max(0, bac - eliminationPerStep * eliminationShare(bac))
+    // The slowing-down tail never quite reaches zero: below what can be shown, call it gone.
+    if (bac < BAC_MODEL_ZERO_PERMILLE && !isAbsorbing(next)) bac = 0
+    t = next
+    times.push(t)
+    values.push(bac)
+    if (t >= nowMs && t >= lastAbsorptionEndMs && bac <= 0) break
   }
 
-  for (let t = firstDrinkAtMs + stepMs; t < nowMs; t += stepMs) {
-    advanceSimulationTo(t, simulation)
-  }
-  advanceSimulationTo(nowMs, simulation)
-
-  const absorbedAlcoholGrams = simulation.absorbedAlcoholGrams
-  const bacGdl = simulation.currentBac
-  let estimatedSoberAtMs: number | null = null
-  let hadPositiveBac = bacGdl > 0
-  let previousBac = bacGdl
-  let peakBacGdl = bacGdl
-  let peakAtMs = nowMs
-
-  for (let t = nowMs + stepMs; t <= simulationEndMs; t += stepMs) {
-    advanceSimulationTo(t, simulation)
-    const bacAtT = simulation.currentBac
-    if (bacAtT > 0) hadPositiveBac = true
-
-    if (bacAtT > peakBacGdl) {
-      peakBacGdl = bacAtT
-      peakAtMs = t
-    }
-
-    if (hadPositiveBac && previousBac > 0 && bacAtT <= 0) {
-      estimatedSoberAtMs = t
-      break
-    }
-
-    previousBac = bacAtT
-  }
+  const nowIndex = stepsBeforeNow
+  const endIndex = values.length - 1
+  const current = values[nowIndex]
+  // Only the upcoming peak counts: highest value from now on (the first one if equal).
+  let peakIndex = nowIndex
+  for (let i = nowIndex; i <= endIndex; i += 1) if (values[i] > values[peakIndex]) peakIndex = i
+  const isRisingToPeak = peakIndex > nowIndex && values[peakIndex] > current
+  const hadAlcoholFromNow = values[peakIndex] > 0
+  const absorbedAlcoholGrams = absorbedBetween(firstDrinkAtMs, nowMs)
 
   return {
-    bacGdl,
-    peakBacGdl,
-    peakAtMs,
-    isRisingToPeak: peakAtMs > nowMs && peakBacGdl > bacGdl,
+    bacGdl: current / 10,
+    peakBacGdl: values[peakIndex] / 10,
+    peakAtMs: times[peakIndex],
+    isRisingToPeak,
     absorbedAlcoholGrams,
-    hoursSinceFirstDrink,
-    estimatedSoberAtMs,
+    hoursSinceFirstDrink: Math.max(0, (nowMs - firstDrinkAtMs) / 3_600_000),
+    estimatedSoberAtMs: hadAlcoholFromNow && values[endIndex] <= 0 ? times[endIndex] : null,
   }
 }
 

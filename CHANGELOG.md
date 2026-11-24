@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-24
+
+The BAC estimate now uses the same model as the Android Bacpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
+
+### Added
+- **Normal meal** food option, between light and heavy. "Light meal" now reads "Light meal or snack".
+
+### Changed
+- Food effects follow published studies (Jones & Jonsson 1997, Ramchandani et al. 2001). Extra absorption time: empty 30, light 45, normal 60, heavy 75 min (was 30 / 37.5 / 50). Share of alcohol reaching the blood: 100 / 90 / 82 / 76 % (was 100 / 88 / 85). After food the liver clears alcohol faster: x1.10 light, x1.25 normal, x1.35 heavy (was not modelled).
+- Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero. Small drinks no longer almost disappear: one glass of wine now shows a higher peak and a later sober-at time. Below 0.0005 g/dL (shown as 0.000) the estimate counts as zero.
+- Heavy meals now give a clearly lower peak and an earlier sober-at time than before.
+
+### Fixed
+- Drinks timed in the future no longer count in the BAC estimate (the countdown already ignored them).
+
 ## [2.0.2] - 2026-11-09
 
 ### Fixed

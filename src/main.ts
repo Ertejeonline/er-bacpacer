@@ -304,7 +304,7 @@ async function boot() {
     const foodProfile = bacFoodProfileInput.value
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
     const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
-    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'heavy'
+    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
     if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || !dateOfBirth || !validSexAtBirth || !validFoodProfile || !validMetabolismLevel) return
     const estimate = actions.previewBacEstimate({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
@@ -663,7 +663,7 @@ async function boot() {
     const foodProfile = bacFoodProfileInput.value
 
     const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
-    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'heavy'
+    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
     if (
       !Number.isFinite(weightKg)
