@@ -544,9 +544,28 @@ select.field-input {
   cursor: pointer;
 }
 
-.form-divider {
-  width: 100%;
-  margin: 4px 0;
-  border: 0;
-  border-top: 1px solid var(--color-border);
+.settings-sections {
+  display: grid;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+/* One group of settings: pace, food, about you */
+.settings-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.settings-section > p {
+  margin: -6px 0 0;
 }
