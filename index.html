@@ -181,16 +181,23 @@
                     <span class="field-label">Height (cm)</span>
                     <input id="bacHeightCmInput" class="field-input" type="number" min="130" max="230" step="1" />
                 </label>
-                <label class="field-block" for="bacSexAtBirthInput">
-                    <span class="field-label">Sex at birth</span>
-                    <select id="bacSexAtBirthInput" class="field-input">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                    </select>
-                </label>
                 <label class="field-block" for="bacDateOfBirthInput">
                     <span class="field-label">Date of birth</span>
                     <input id="bacDateOfBirthInput" class="field-input" type="date" />
+                </label>
+                <label class="field-block" for="bacBuildInput">
+                    <span class="field-label">Your build</span>
+                    <select id="bacBuildInput" class="field-input"></select>
+                    <span class="field-label">More muscle means more body water to dilute alcohol, so a lower estimated BAC.</span>
+                    <span id="bacBuildSuggestion" class="field-label hidden"></span>
+                </label>
+                <label class="field-checkbox" for="bacBodyFatKnownInput">
+                    <input id="bacBodyFatKnownInput" type="checkbox" />
+                    <span>I know my body fat % (smart scale or fitness watch)</span>
+                </label>
+                <label class="field-block" for="bacBodyFatInput">
+                    <span id="bacBodyFatLabel" class="field-label">Body fat (%)</span>
+                    <input id="bacBodyFatInput" class="field-input" type="number" min="5" max="60" step="1" />
                 </label>
             </div>
             <div class="modal-actions">

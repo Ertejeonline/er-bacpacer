@@ -9,6 +9,7 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
 import { executeSerialized, resetBridgeSerializer } from '../_shared/bridge-serializer'
+import { getBuildLabel } from '../_shared/body'
 import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryEndTimestampMs, getStandbyCountdown, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
 
 const MENU_ITEMS: { id: MenuItem; label: string }[] = [
@@ -551,7 +552,7 @@ function getScreenBody(item: MenuItem): string {
         `Food: ${settings.foodProfile}`,
         `Weight: ${settings.weightKg} kg`,
         `Height: ${Math.round(settings.heightCm)} cm`,
-        `Sex: ${settings.sexAtBirth}`,
+        settings.bodyFatKnown ? `Body fat: ${settings.bodyFatPercent}%` : `Build: ${getBuildLabel(settings.build)}`,
         `Age: ${Math.round(settings.ageYears)}`,
       ].join('\n')
     }

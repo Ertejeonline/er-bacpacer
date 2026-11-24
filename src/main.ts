@@ -1,6 +1,15 @@
 import type { AppModule } from '../_shared/app-types'
 import { METABOLISM_LEVEL_LABELS } from '../_shared/app-types'
 import {
+  BODY_FAT_PERCENT_LIMITS,
+  BUILD_OPTIONS,
+  getBuildBodyFatPercent,
+  getBuildLabel,
+  isBacBuild,
+  suggestBuild,
+  type BacBuild,
+} from '../_shared/body'
+import {
   DRINK_ML_LIMITS,
   DRINK_PERCENT_LIMITS,
   formatDrinkMl,
@@ -49,7 +58,11 @@ async function boot() {
   const bacMetabolismLevelInput = document.getElementById('bacMetabolismLevelInput') as HTMLInputElement | null
   const bacMetabolismLevelLabel = document.getElementById('bacMetabolismLevelLabel') as HTMLSpanElement | null
   const bacWeightKgInput = document.getElementById('bacWeightKgInput') as HTMLInputElement | null
-  const bacSexAtBirthInput = document.getElementById('bacSexAtBirthInput') as HTMLSelectElement | null
+  const bacBuildInput = document.getElementById('bacBuildInput') as HTMLSelectElement | null
+  const bacBuildSuggestion = document.getElementById('bacBuildSuggestion')
+  const bacBodyFatKnownInput = document.getElementById('bacBodyFatKnownInput') as HTMLInputElement | null
+  const bacBodyFatInput = document.getElementById('bacBodyFatInput') as HTMLInputElement | null
+  const bacBodyFatLabel = document.getElementById('bacBodyFatLabel')
   const bacDateOfBirthInput = document.getElementById('bacDateOfBirthInput') as HTMLInputElement | null
   const bacHeightCmInput = document.getElementById('bacHeightCmInput') as HTMLInputElement | null
   const bacFoodProfileInput = document.getElementById('bacFoodProfileInput') as HTMLSelectElement | null
@@ -216,6 +229,59 @@ async function boot() {
     confirmDeleteDrinkModal?.classList.add('hidden')
   }
 
+  if (bacBuildInput) {
+    for (const option of BUILD_OPTIONS) {
+      const el = document.createElement('option')
+      el.value = option.id
+      el.textContent = `${option.label} (${option.description.toLowerCase()})`
+      bacBuildInput.appendChild(el)
+    }
+  }
+
+  // Whether the user picked the build in this form or before; until then it
+  // follows the suggestion from height, weight and age.
+  let bacBuildChosen = false
+
+  const ageFromDateOfBirth = (dateOfBirth: string | null): number => {
+    if (!dateOfBirth) return 30
+    const [year, month, day] = dateOfBirth.split('-').map(Number)
+    const now = new Date()
+    let age = now.getFullYear() - year
+    if ((now.getMonth() + 1) < month || ((now.getMonth() + 1) === month && now.getDate() < day)) age -= 1
+    return Math.max(18, Math.min(100, age))
+  }
+
+  const refreshBuildFields = () => {
+    if (!bacBuildInput || !bacBodyFatKnownInput || !bacBodyFatInput) return
+    const weightKg = Number(bacWeightKgInput?.value)
+    const heightCm = Number(bacHeightCmInput?.value)
+    const ageYears = ageFromDateOfBirth(normalizeDateOfBirth(bacDateOfBirthInput?.value ?? ''))
+    const suggested = weightKg > 0 && heightCm > 0 ? suggestBuild(heightCm, weightKg, ageYears) : null
+    if (!bacBuildChosen && suggested) bacBuildInput.value = suggested
+    if (bacBuildSuggestion) {
+      const show = bacBuildChosen && suggested !== null && bacBuildInput.value !== suggested
+      bacBuildSuggestion.classList.toggle('hidden', !show)
+      bacBuildSuggestion.textContent = show && suggested ? `Suggested from your height and weight: ${getBuildLabel(suggested)}` : ''
+    }
+    const known = bacBodyFatKnownInput.checked
+    bacBodyFatInput.disabled = !known
+    if (!known && isBacBuild(bacBuildInput.value)) {
+      bacBodyFatInput.value = String(getBuildBodyFatPercent(bacBuildInput.value))
+    }
+    if (bacBodyFatLabel) {
+      bacBodyFatLabel.textContent = known ? 'Body fat (%)' : 'Body fat (%, estimated from your build)'
+    }
+  }
+
+  const readBuildFields = (): { build: BacBuild; buildChosen: boolean; bodyFatKnown: boolean; bodyFatPercent: number } | null => {
+    if (!bacBuildInput || !bacBodyFatKnownInput || !bacBodyFatInput) return null
+    const build = bacBuildInput.value
+    const bodyFatPercent = Number(bacBodyFatInput.value)
+    if (!isBacBuild(build)) return null
+    if (!Number.isFinite(bodyFatPercent) || bodyFatPercent < BODY_FAT_PERCENT_LIMITS.min || bodyFatPercent > BODY_FAT_PERCENT_LIMITS.max) return null
+    return { build, buildChosen: bacBuildChosen, bodyFatKnown: bacBodyFatKnownInput.checked, bodyFatPercent }
+  }
+
   const closeBacSettingsModal = () => {
     bacSettingsModal?.classList.add('hidden')
   }
@@ -260,7 +326,7 @@ async function boot() {
       || !bacSettingsModal
       || !bacMetabolismLevelInput
       || !bacWeightKgInput
-      || !bacSexAtBirthInput
+      || !bacBuildInput
       || !bacDateOfBirthInput
       || !bacHeightCmInput
       || !bacFoodProfileInput
@@ -274,10 +340,14 @@ async function boot() {
       bacMetabolismLevelLabel.textContent = METABOLISM_LEVEL_LABELS[settings.metabolismLevel]
     }
     bacWeightKgInput.value = String(settings.weightKg)
-    bacSexAtBirthInput.value = settings.sexAtBirth
+    bacBuildInput.value = settings.build
+    bacBuildChosen = settings.buildChosen
+    if (bacBodyFatKnownInput) bacBodyFatKnownInput.checked = settings.bodyFatKnown
+    if (bacBodyFatInput) bacBodyFatInput.value = String(settings.bodyFatPercent)
     bacDateOfBirthInput.value = settings.dateOfBirth ?? deriveDateOfBirthFromAgeYears(settings.ageYears)
     bacHeightCmInput.value = String(Math.round(settings.heightCm))
     bacFoodProfileInput.value = settings.foodProfile
+    refreshBuildFields()
 
     const estimate = actions.getBacEstimate?.()
     if (bacEstimatePreview) {
@@ -295,22 +365,21 @@ async function boot() {
   }
 
   const updateLiveBacPreview = () => {
-    if (!actions.previewBacEstimate || !bacEstimatePreview || !bacMetabolismLevelInput || !bacWeightKgInput || !bacSexAtBirthInput || !bacDateOfBirthInput || !bacHeightCmInput || !bacFoodProfileInput) return
+    if (!actions.previewBacEstimate || !bacEstimatePreview || !bacMetabolismLevelInput || !bacWeightKgInput || !bacBuildInput || !bacDateOfBirthInput || !bacHeightCmInput || !bacFoodProfileInput) return
     const metabolismLevel = Number(bacMetabolismLevelInput.value)
     const weightKg = Number(bacWeightKgInput.value)
     const heightCm = Number(bacHeightCmInput.value)
-    const sexAtBirth = bacSexAtBirthInput.value
+    const buildFields = readBuildFields()
     const dateOfBirth = normalizeDateOfBirth(bacDateOfBirthInput.value)
     const foodProfile = bacFoodProfileInput.value
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
-    const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
     const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
-    if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || !dateOfBirth || !validSexAtBirth || !validFoodProfile || !validMetabolismLevel) return
+    if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || !dateOfBirth || !buildFields || !validFoodProfile || !validMetabolismLevel) return
     const estimate = actions.previewBacEstimate({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
       weightKg,
       heightCm,
-      sexAtBirth,
+      ...buildFields,
       dateOfBirth,
       foodProfile,
     })
@@ -637,17 +706,27 @@ async function boot() {
     }
     updateLiveBacPreview()
   })
-  bacWeightKgInput?.addEventListener('input', updateLiveBacPreview)
-  bacHeightCmInput?.addEventListener('input', updateLiveBacPreview)
-  bacSexAtBirthInput?.addEventListener('change', updateLiveBacPreview)
-  bacDateOfBirthInput?.addEventListener('change', updateLiveBacPreview)
+  const onBodyInput = () => {
+    refreshBuildFields()
+    updateLiveBacPreview()
+  }
+  bacWeightKgInput?.addEventListener('input', onBodyInput)
+  bacHeightCmInput?.addEventListener('input', onBodyInput)
+  bacDateOfBirthInput?.addEventListener('change', onBodyInput)
+  bacBuildInput?.addEventListener('change', () => {
+    bacBuildChosen = true
+    onBodyInput()
+  })
+  // Turning it on starts from the estimate it was showing.
+  bacBodyFatKnownInput?.addEventListener('change', onBodyInput)
+  bacBodyFatInput?.addEventListener('input', updateLiveBacPreview)
   bacFoodProfileInput?.addEventListener('change', updateLiveBacPreview)
   saveBacSettingsBtn?.addEventListener('click', () => {
     if (
       !actions.updateBacSettings
       || !bacMetabolismLevelInput
       || !bacWeightKgInput
-      || !bacSexAtBirthInput
+      || !bacBuildInput
       || !bacDateOfBirthInput
       || !bacHeightCmInput
       || !bacFoodProfileInput
@@ -657,19 +736,18 @@ async function boot() {
 
     const metabolismLevel = Number(bacMetabolismLevelInput.value)
     const weightKg = Number(bacWeightKgInput.value)
-    const sexAtBirth = bacSexAtBirthInput.value
+    const buildFields = readBuildFields()
     const dateOfBirth = normalizeDateOfBirth(bacDateOfBirthInput.value)
     const heightCm = Number(bacHeightCmInput.value)
     const foodProfile = bacFoodProfileInput.value
 
-    const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
     const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
     if (
       !Number.isFinite(weightKg)
       || !Number.isFinite(heightCm)
       || !dateOfBirth
-      || !validSexAtBirth
+      || !buildFields
       || !validFoodProfile
       || !validMetabolismLevel
     ) {
@@ -680,7 +758,7 @@ async function boot() {
     actions.updateBacSettings({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
       weightKg,
-      sexAtBirth,
+      ...buildFields,
       dateOfBirth,
       heightCm,
       foodProfile,

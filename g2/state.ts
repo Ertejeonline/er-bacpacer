@@ -2,6 +2,15 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { setBackgroundState, onBackgroundRestore } from '../_shared/background-state'
 import { executeSerialized } from '../_shared/bridge-serializer'
+import {
+  BODY_FAT_PERCENT_LIMITS,
+  getBuildBodyFatPercent,
+  isBacBuild,
+  suggestBuild,
+  type BacBuild,
+} from '../_shared/body'
+
+export type { BacBuild } from '../_shared/body'
 
 export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink' | 'presets'
 
@@ -20,7 +29,6 @@ export type DrinkPreset = {
 }
 
 export type BacFoodProfile = 'empty' | 'light' | 'normal' | 'heavy'
-export type BacSexAtBirth = 'male' | 'female'
 export type BacMetabolismLevel = 1 | 2 | 3 | 4 | 5
 
 export const METABOLISM_LEVEL_LABELS: Record<BacMetabolismLevel, string> = {
@@ -42,7 +50,13 @@ const METABOLISM_LEVEL_ELIMINATION_RATE: Record<BacMetabolismLevel, number> = {
 export type BacUserSettings = {
   metabolismLevel: BacMetabolismLevel
   weightKg: number
-  sexAtBirth: BacSexAtBirth
+  // The user's build, or the one suggested from height, weight and age while
+  // buildChosen is false (then it follows changes to those).
+  build: BacBuild
+  buildChosen: boolean
+  // When bodyFatKnown, bodyFatPercent is used instead of the build.
+  bodyFatKnown: boolean
+  bodyFatPercent: number
   dateOfBirth: string | null
   ageYears: number
   heightCm: number
@@ -108,6 +122,8 @@ const BAC_MODEL_ELIMINATION_KM_PERMILLE = 0.05
 const BAC_MODEL_ZERO_PERMILLE = 0.005
 const BAC_MODEL_MAX_PROJECTION_MS = 72 * 60 * 60 * 1000
 
+// Share of fat-free mass that is water.
+const BAC_MODEL_LEAN_MASS_WATER_FRACTION = 0.73
 // Share of blood that is water. Alcohol spreads through body water, so the
 // volume it is diluted into, measured as blood, is body water / 0.8.
 const BAC_MODEL_BLOOD_WATER_FRACTION = 0.8
@@ -120,7 +136,10 @@ const DRINK_PERCENT_MAX = 100
 const DEFAULT_BAC_SETTINGS: BacUserSettings = {
   metabolismLevel: 3,
   weightKg: 75,
-  sexAtBirth: 'male',
+  build: 'average',
+  buildChosen: false,
+  bodyFatKnown: false,
+  bodyFatPercent: 28,
   dateOfBirth: null,
   ageYears: 30,
   heightCm: 175,
@@ -210,11 +229,6 @@ function normalizeFoodProfile(value: unknown): BacFoodProfile {
   return DEFAULT_BAC_SETTINGS.foodProfile
 }
 
-function normalizeSexAtBirth(value: unknown): BacSexAtBirth {
-  if (value === 'male' || value === 'female') return value
-  return DEFAULT_BAC_SETTINGS.sexAtBirth
-}
-
 function normalizeDateOfBirth(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -260,23 +274,18 @@ function calculateAgeYearsFromDateOfBirth(dateOfBirth: string, now: Date = new D
   return years
 }
 
-// Widmark factor r: the share of body weight that alcohol is diluted into.
-// Total body water comes from the Watson et al. (1980) equations (height in cm,
-// weight in kg, age in years; age only matters for men), then
-// r = body water / (0.8 x weight). A 75 kg, 175 cm, 30 year old man gives about 0.73.
-export function calculateWidmarkFactor(settings: {
-  sexAtBirth: BacSexAtBirth
-  ageYears: number
-  heightCm: number
-  weightKg: number
-}): number {
-  const tbwLiters = settings.sexAtBirth === 'male'
-    ? (2.447 - (0.09516 * settings.ageYears) + (0.1074 * settings.heightCm) + (0.3362 * settings.weightKg))
-    : (-2.097 + (0.1069 * settings.heightCm) + (0.2466 * settings.weightKg))
+// Body fat in use: the user's own figure when they know it, else their build's.
+export function getBodyFatPercent(settings: Pick<BacUserSettings, 'build' | 'bodyFatKnown' | 'bodyFatPercent'>): number {
+  return settings.bodyFatKnown ? settings.bodyFatPercent : getBuildBodyFatPercent(settings.build)
+}
 
-  const rawFactor = settings.weightKg > 0
-    ? tbwLiters / (BAC_MODEL_BLOOD_WATER_FRACTION * settings.weightKg)
-    : BAC_MODEL_WIDMARK_FACTOR_MIN
+// Widmark factor r: the share of body weight that alcohol is diluted into.
+// Body water is 73 % of the fat-free mass, then r = body water / (0.8 x weight)
+// = 0.73 x (1 - body fat) / 0.8. Same as the Android app. 20 % body fat (the
+// "Fit" build, and about what Watson's formula gives a 75 kg, 175 cm man)
+// gives 0.73; 28 % ("Average") 0.657.
+export function calculateWidmarkFactor(bodyFatPercent: number): number {
+  const rawFactor = BAC_MODEL_LEAN_MASS_WATER_FRACTION * (1 - bodyFatPercent / 100) / BAC_MODEL_BLOOD_WATER_FRACTION
   return clampNumber(rawFactor, BAC_MODEL_WIDMARK_FACTOR_MIN, BAC_MODEL_WIDMARK_FACTOR_MAX)
 }
 
@@ -306,7 +315,25 @@ function normalizeBacSettings(value: Partial<BacUserSettings> | undefined): BacU
     BAC_SETTINGS_BOUNDS.heightCm.min,
     BAC_SETTINGS_BOUNDS.heightCm.max,
   )
-  const sexAtBirth = normalizeSexAtBirth(value?.sexAtBirth)
+
+  // Saves from before 2.1.0 hold a sex instead of a build: convert it once,
+  // with the sex in the body fat estimate, and keep it as the user's choice.
+  const legacySex = (value as { sexAtBirth?: unknown } | undefined)?.sexAtBirth
+  let build: BacBuild | null = isBacBuild(value?.build) ? value.build : null
+  let buildChosen = value?.buildChosen === true
+  if (!build && (legacySex === 'male' || legacySex === 'female')) {
+    build = suggestBuild(heightCm, weightKg, ageYears, legacySex === 'male' ? 1 : 0)
+    buildChosen = true
+  }
+  if (!build || !buildChosen) {
+    build = suggestBuild(heightCm, weightKg, ageYears)
+    buildChosen = false
+  }
+  const bodyFatPercent = Math.round(clampNumber(
+    typeof value?.bodyFatPercent === 'number' ? value.bodyFatPercent : getBuildBodyFatPercent(build),
+    BODY_FAT_PERCENT_LIMITS.min,
+    BODY_FAT_PERCENT_LIMITS.max,
+  ))
 
   const rawMetabolism = typeof value?.metabolismLevel === 'number'
     ? value.metabolismLevel
@@ -320,7 +347,10 @@ function normalizeBacSettings(value: Partial<BacUserSettings> | undefined): BacU
   return {
     metabolismLevel,
     weightKg,
-    sexAtBirth,
+    build,
+    buildChosen,
+    bodyFatKnown: value?.bodyFatKnown === true,
+    bodyFatPercent,
     dateOfBirth,
     ageYears,
     heightCm,
@@ -635,7 +665,7 @@ export function getBacEstimateAt(nowMs: number = Date.now()): BacEstimate {
   if (entries.length === 0 || settings.weightKg <= 0) return createZeroBacEstimate()
 
   const food = FOOD_PROFILES[settings.foodProfile]
-  const distributionLiters = calculateWidmarkFactor(settings) * settings.weightKg
+  const distributionLiters = calculateWidmarkFactor(getBodyFatPercent(settings)) * settings.weightKg
   const stepMs = 60_000
   // Rates are stored in g/dL per hour; x 10 for permille.
   const eliminationPerStep = METABOLISM_LEVEL_ELIMINATION_RATE[settings.metabolismLevel] * 10

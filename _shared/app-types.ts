@@ -12,9 +12,9 @@ export type DrinkPreset = {
   percent: number
 }
 
-export type BacFoodProfile = 'empty' | 'light' | 'heavy'
+import type { BacBuild } from './body'
 
-export type BacSexAtBirth = 'male' | 'female'
+export type BacFoodProfile = 'empty' | 'light' | 'normal' | 'heavy'
 
 export type BacMetabolismLevel = 1 | 2 | 3 | 4 | 5
 
@@ -29,7 +29,10 @@ export const METABOLISM_LEVEL_LABELS: Record<BacMetabolismLevel, string> = {
 export type BacUserSettings = {
   metabolismLevel: BacMetabolismLevel
   weightKg: number
-  sexAtBirth: BacSexAtBirth
+  build: BacBuild
+  buildChosen: boolean
+  bodyFatKnown: boolean
+  bodyFatPercent: number
   dateOfBirth: string | null
   ageYears: number
   heightCm: number

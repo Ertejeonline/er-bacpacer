@@ -342,7 +342,6 @@ describe('g2/state', () => {
       weightKg: 10,
       ageYears: 200,
       heightCm: 500,
-      sexAtBirth: 'female',
       foodProfile: 'invalid' as never,
     })
 
@@ -368,7 +367,6 @@ describe('g2/state', () => {
       ageYears: 99,
       weightKg: 70,
       heightCm: 175,
-      sexAtBirth: 'male',
     })
 
     const settings = getBacSettings()
@@ -395,27 +393,27 @@ describe('g2/state', () => {
     expect(e.isRisingToPeak).toBe(true)
   }
 
-  it('matches the Android app: one beer 10 minutes ago, light meal', () => {
+  it('matches the Android app: one beer 10 minutes ago, fit build, light meal', () => {
     expectAndroidReference(
-      { sexAtBirth: 'male', weightKg: 75, heightCm: 175, ageYears: 30, metabolismLevel: 3, foodProfile: 'light' },
+      { build: 'fit', buildChosen: true, weightKg: 75, heightCm: 175, ageYears: 30, metabolismLevel: 3, foodProfile: 'light' },
       [[500, 5, -10]],
-      0.027430930613171724, 0.15952554438722488, 85, 198,
+      0.027299144133994296, 0.15839608570755534, 85, 197,
     )
   })
 
-  it('matches the Android app: three wines, empty stomach', () => {
+  it('matches the Android app: three wines, some extra weight, empty stomach', () => {
     expectAndroidReference(
-      { sexAtBirth: 'female', weightKg: 62, heightCm: 165, ageYears: 40, metabolismLevel: 2, foodProfile: 'empty' },
+      { build: 'someExtra', buildChosen: true, weightKg: 62, heightCm: 165, ageYears: 40, metabolismLevel: 2, foodProfile: 'empty' },
       [[175, 13.5, -150], [175, 13.5, -100], [175, 13.5, -50]],
-      1.0180584234258325, 1.133470630492922, 27, 693,
+      1.0981036659928165, 1.2242547132592598, 27, 738,
     )
   })
 
-  it('matches the Android app: heavy meal', () => {
+  it('matches the Android app: 15 % body fat known, heavy meal', () => {
     expectAndroidReference(
-      { sexAtBirth: 'male', weightKg: 90, heightCm: 185, ageYears: 25, metabolismLevel: 4, foodProfile: 'heavy' },
+      { build: 'average', buildChosen: true, bodyFatKnown: true, bodyFatPercent: 15, weightKg: 90, heightCm: 185, ageYears: 25, metabolismLevel: 4, foodProfile: 'heavy' },
       [[40, 40, -20], [330, 5, -5]],
-      0.0205868424081271, 0.0702016751284952, 87, 140,
+      0.018280067164395727, 0.05762408464102832, 87, 135,
     )
   })
 
@@ -451,21 +449,42 @@ describe('g2/state', () => {
   })
 
   it('BAC estimate runs without error when body water factor is computed internally', () => {
-    setBacSettings({ weightKg: 80, heightCm: 180, sexAtBirth: 'male', dateOfBirth: '1985-01-01' })
+    setBacSettings({ weightKg: 80, heightCm: 180, build: 'fit', buildChosen: true, dateOfBirth: '1985-01-01' })
     expect(() => getBacEstimateAt(Date.now())).not.toThrow()
   })
 
-  it('derives the Widmark factor from Watson body water divided by 0.8 x weight', () => {
-    // Man, 75 kg, 175 cm, 30: body water 43.6 L -> 43.6 / (0.8 x 75) = 0.727
-    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 30, heightCm: 175, weightKg: 75 })).toBeCloseTo(0.727, 2)
-    // Woman, 65 kg, 165 cm: body water 31.57 L -> 31.57 / (0.8 x 65) = 0.607
-    expect(calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 30, heightCm: 165, weightKg: 65 })).toBeCloseTo(0.607, 2)
-    // Age only changes the male figure
-    const young = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 20, heightCm: 165, weightKg: 65 })
-    const old = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 80, heightCm: 165, weightKg: 65 })
-    expect(young).toBe(old)
-    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 80, heightCm: 175, weightKg: 75 }))
-      .toBeLessThan(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 20, heightCm: 175, weightKg: 75 }))
+  it('derives the Widmark factor from body fat: 0.73 x (1 - fat) / 0.8', () => {
+    expect(calculateWidmarkFactor(20)).toBeCloseTo(0.73, 9)
+    expect(calculateWidmarkFactor(28)).toBeCloseTo(0.657, 9)
+    // More muscle (less fat) means more body water, so a lower BAC.
+    expect(calculateWidmarkFactor(12)).toBeGreaterThan(calculateWidmarkFactor(44))
+    expect(calculateWidmarkFactor(60)).toBe(0.4)
+  })
+
+  it('suggests a build from height, weight and age until the user picks one', () => {
+    setBacSettings({ weightKg: 75, heightCm: 175, dateOfBirth: null, ageYears: 30, buildChosen: false })
+    expect(getBacSettings().build).toBe('average')
+    setBacSettings({ weightKg: 120 })
+    expect(getBacSettings().build).toBe('lotsExtra')
+    expect(getBacSettings().buildChosen).toBe(false)
+
+    setBacSettings({ build: 'fit', buildChosen: true })
+    setBacSettings({ weightKg: 60 })
+    expect(getBacSettings().build).toBe('fit')
+    expect(getBacSettings().buildChosen).toBe(true)
+  })
+
+  it('uses the known body fat instead of the build', () => {
+    const now = 1_800_000_000_000
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: now - 30 * MIN }]
+    setBacSettings({ build: 'average', buildChosen: true, bodyFatKnown: false })
+    const fromBuild = getBacEstimateAt(now).bacGdl
+    setBacSettings({ bodyFatKnown: true, bodyFatPercent: 28 })
+    expect(getBacEstimateAt(now).bacGdl).toBeCloseTo(fromBuild, 12)
+    setBacSettings({ bodyFatPercent: 40 })
+    expect(getBacEstimateAt(now).bacGdl).toBeGreaterThan(fromBuild)
+    setBacSettings({ bodyFatPercent: 99 })
+    expect(getBacSettings().bodyFatPercent).toBe(60)
   })
 
   it('hydrates persisted state from bridge, prunes old entries, and re-saves', async () => {
@@ -513,6 +532,10 @@ describe('g2/state', () => {
     expect(state.bacSettings.dateOfBirth).toBe('2010-01-01')
     expect(state.bacSettings.ageYears).toBe(18)
     expect(state.bacSettings.heightCm).toBe(230)
+    // The old "sex at birth" became a build, kept as the user's choice.
+    expect('sexAtBirth' in state.bacSettings).toBe(false)
+    expect(state.bacSettings.build).toBe('lotsExtra')
+    expect(state.bacSettings.buildChosen).toBe(true)
     expect('useCustomBodyWaterFactor' in state.bacSettings).toBe(false)
     expect('eliminationRatePerHour' in state.bacSettings).toBe(false)
     expect('absorptionMinutes' in state.bacSettings).toBe(false)
