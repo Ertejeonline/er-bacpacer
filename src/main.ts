@@ -274,7 +274,7 @@ async function boot() {
     if (!known && buildBodyFat !== null) bacBodyFatInput.value = String(buildBodyFat)
     if (bacBodyFatLabel) {
       bacBodyFatLabel.textContent = known
-        ? 'Your body fat in % (5 to 60)'
+        ? 'Your body fat in %'
         : `Body fat estimated from your build: ${buildBodyFat ?? '–'}%`
     }
   }
