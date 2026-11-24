@@ -279,12 +279,17 @@ async function boot() {
     }
   }
 
-  const readBuildFields = (): { build: BacBuild; buildChosen: boolean; bodyFatKnown: boolean; bodyFatPercent: number } | null => {
+  // A body fat figure outside 5-60 % is set to the nearest limit, and an empty
+  // field falls back to the build's figure. On save the field shows what was kept.
+  const readBuildFields = (showClamped = false): { build: BacBuild; buildChosen: boolean; bodyFatKnown: boolean; bodyFatPercent: number } | null => {
     if (!bacBuildInput || !bacBodyFatKnownInput || !bacBodyFatInput) return null
     const build = bacBuildInput.value
-    const bodyFatPercent = Number(bacBodyFatInput.value)
     if (!isBacBuild(build)) return null
-    if (!Number.isFinite(bodyFatPercent) || bodyFatPercent < BODY_FAT_PERCENT_LIMITS.min || bodyFatPercent > BODY_FAT_PERCENT_LIMITS.max) return null
+    const typed = bacBodyFatInput.value.trim() === '' ? NaN : Number(bacBodyFatInput.value)
+    const bodyFatPercent = Number.isFinite(typed)
+      ? Math.round(Math.min(BODY_FAT_PERCENT_LIMITS.max, Math.max(BODY_FAT_PERCENT_LIMITS.min, typed)))
+      : getBuildBodyFatPercent(build)
+    if (showClamped) bacBodyFatInput.value = String(bodyFatPercent)
     return { build, buildChosen: bacBuildChosen, bodyFatKnown: bacBodyFatKnownInput.checked, bodyFatPercent }
   }
 
@@ -742,7 +747,7 @@ async function boot() {
 
     const metabolismLevel = Number(bacMetabolismLevelInput.value)
     const weightKg = Number(bacWeightKgInput.value)
-    const buildFields = readBuildFields()
+    const buildFields = readBuildFields(true)
     const dateOfBirth = normalizeDateOfBirth(bacDateOfBirthInput.value)
     const heightCm = Number(bacHeightCmInput.value)
     const foodProfile = bacFoodProfileInput.value
