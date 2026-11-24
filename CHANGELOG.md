@@ -13,8 +13,8 @@ The BAC estimate now uses the same model as the Android BACpacer app, so both ap
 - **Your pace**, first in Settings: an amount, its alcohol % and minutes (by default 500 ml at 5 % every 50 min, the pace so far), with -/+ steps of 10 ml, 0.5 % and 5 min, examples for a beer, a glass of wine and a shot, and Reset to default. It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
 - **Buy me a coffee** at the bottom of the phone menu, green with a ☕ like the website's button. It opens the website's Support page (https://ertejeonline.github.io/support/) in a new tab.
 - **Normal meal** food option, between light and heavy. "Light meal" now reads "Light meal or snack".
-- **Your build** replaces "Sex at birth" in Settings: Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight. Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet line shows the suggestion only when it differs from your pick.
-- **I know my body fat %**: a body fat figure from a smart scale or fitness watch, used instead of the build. When it is off, the field shows the build's figure; turning it on starts from there.
+- **Your build** replaces "Sex at birth" in Settings: a dropdown with Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight, under the hint "More muscle means more body water to dilute alcohol, so a lower estimated BAC". Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet "Suggested from your height and weight" line shows only when it differs from your pick. Below it: "Body fat estimated from your build: XX%".
+- **I know my body fat %**: a body fat figure from a smart scale or fitness watch, used instead of the build. Ticking it swaps the build dropdown for a body fat field, starting from the build's figure; unticking brings the dropdown back.
 
 ### Changed
 - Body water now comes from body fat (73 % of everything that is not fat) instead of Watson's equations by sex. Saved settings with a sex are converted once into the build that fits it and kept as your choice. The glasses' Setup screen shows `Build:` (or `Body fat:`) instead of `Sex:`.
@@ -25,6 +25,7 @@ The BAC estimate now uses the same model as the Android BACpacer app, so both ap
 - The app's name is written **BACpacer** everywhere (app name, phone page title and footer), like the Android app.
 - Phone menu: "BAC settings" is now just **Settings**, and the order is Log a Drink, Drinks log, Presets, Settings, Reset Drinks (last, away from the everyday buttons).
 - A body fat figure outside 5-60 % is saved at the nearest limit instead of blocking Save.
+- Dropdowns (Food profile, Your build) show a down arrow, so they read as dropdowns.
 
 ### Fixed
 - Drinks timed in the future no longer count in the BAC estimate (the countdown already ignored them).
