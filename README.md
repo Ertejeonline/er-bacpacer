@@ -1,6 +1,6 @@
-# Bacpacer (Even G2)
+# BACpacer (Even G2)
 
-Bacpacer is an Even G2 app for pacing alcohol intake.
+BACpacer is an Even G2 app for pacing alcohol intake.
 
 It lets you log drinks on-glasses, shows a countdown until the next drink window, and estimates BAC using configurable personal settings.
 
@@ -25,7 +25,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - shows `Peak BAC X.XXX at HH:MM` in the bottom-left HUD while BAC is still rising
   - estimates sober time
   - supports food profile (empty stomach, light meal or snack, normal meal, heavy meal), metabolism slider, and profile inputs (weight, height, date of birth, and your build, suggested from those until you pick one, or your own body fat %)
-  - same maths as the Android Bacpacer app (`BacCalculator.kt`): Widmark factor from body fat, 0.73 x (1 - fat) / 0.8, with fat from your build (12 / 20 / 28 / 36 / 44 %) or your own figure; each drink absorbed linearly over its duration plus the food's extra minutes (30 / 45 / 60 / 75); food lowers the share of alcohol that reaches the blood (100 / 90 / 82 / 76 %) and speeds up elimination (x1.00 / 1.10 / 1.25 / 1.35); elimination slows down at low levels (Michaelis-Menten, Km 0.05 per mille) and the estimate counts as zero below 0.0005 g/dL
+  - same maths as the Android BACpacer app (`BacCalculator.kt`): Widmark factor from body fat, 0.73 x (1 - fat) / 0.8, with fat from your build (12 / 20 / 28 / 36 / 44 %) or your own figure; each drink absorbed linearly over its duration plus the food's extra minutes (30 / 45 / 60 / 75); food lowers the share of alcohol that reaches the blood (100 / 90 / 82 / 76 %) and speeds up elimination (x1.00 / 1.10 / 1.25 / 1.35); elimination slows down at low levels (Michaelis-Menten, Km 0.05 per mille) and the estimate counts as zero below 0.0005 g/dL
 - Companion web UI:
   - connect to bridge
   - log a drink from the phone (ml and % with -/+ buttons, starts from the default drink)

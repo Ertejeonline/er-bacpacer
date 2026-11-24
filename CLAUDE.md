@@ -1,4 +1,4 @@
-# Bacpacer (Even G2)
+# BACpacer (Even G2)
 
 Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.1.0, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
 

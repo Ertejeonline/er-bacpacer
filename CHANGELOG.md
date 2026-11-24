@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.1.0] - 2026-11-24
 
-The BAC estimate now uses the same model as the Android Bacpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
+The BAC estimate now uses the same model as the Android BACpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
 
 ### Added
 - **Your pace**, first in Settings: an amount, its alcohol % and minutes (by default 500 ml at 5 % every 50 min, the pace so far), with -/+ steps of 10 ml, 0.5 % and 5 min, examples for a beer, a glass of wine and a shot, and Reset to default. It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
@@ -22,6 +22,7 @@ The BAC estimate now uses the same model as the Android Bacpacer app, so both ap
 - Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero. Small drinks no longer almost disappear: one glass of wine now shows a higher peak and a later sober-at time. Below 0.0005 g/dL (shown as 0.000) the estimate counts as zero.
 - Heavy meals now give a clearly lower peak and an earlier sober-at time than before.
 - Settings is grouped into three boxes: **Your pace**, **Food** and **About you** (weight, height, date of birth, build or body fat, metabolism).
+- The app's name is written **BACpacer** everywhere (app name, phone page title and footer), like the Android app.
 - Phone menu: "BAC settings" is now just **Settings**, and the order is Log a Drink, Drinks log, Presets, Settings, Reset Drinks (last, away from the everyday buttons).
 - A body fat figure outside 5-60 % is saved at the nearest limit instead of blocking Save.
 
