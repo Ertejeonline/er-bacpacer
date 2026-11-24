@@ -263,13 +263,18 @@ async function boot() {
       bacBuildSuggestion.classList.toggle('hidden', !show)
       bacBuildSuggestion.textContent = show && suggested ? `Suggested from your height and weight: ${getBuildLabel(suggested)}` : ''
     }
+    // The dropdown and the body fat field take turns: ticking the box swaps the
+    // build for the user's own figure, which starts from the build's estimate.
     const known = bacBodyFatKnownInput.checked
-    bacBodyFatInput.disabled = !known
-    if (!known && isBacBuild(bacBuildInput.value)) {
-      bacBodyFatInput.value = String(getBuildBodyFatPercent(bacBuildInput.value))
-    }
+    bacBuildInput.classList.toggle('hidden', known)
+    bacBodyFatInput.classList.toggle('hidden', !known)
+    if (bacBuildSuggestion && known) bacBuildSuggestion.classList.add('hidden')
+    const buildBodyFat = isBacBuild(bacBuildInput.value) ? getBuildBodyFatPercent(bacBuildInput.value) : null
+    if (!known && buildBodyFat !== null) bacBodyFatInput.value = String(buildBodyFat)
     if (bacBodyFatLabel) {
-      bacBodyFatLabel.textContent = known ? 'Body fat (%)' : 'Body fat (%, estimated from your build)'
+      bacBodyFatLabel.textContent = known
+        ? 'Your body fat in % (5 to 60)'
+        : `Body fat estimated from your build: ${buildBodyFat ?? '–'}%`
     }
   }
 
