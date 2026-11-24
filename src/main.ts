@@ -762,7 +762,7 @@ async function boot() {
       || !validFoodProfile
       || !validMetabolismLevel
     ) {
-      updateStatus('Enter valid BAC settings')
+      updateStatus('Enter valid settings')
       return
     }
 
@@ -777,9 +777,9 @@ async function boot() {
 
     const estimate = actions.getBacEstimate?.()
     if (estimate) {
-      updateStatus(`BAC settings saved. Est. BAC: ${estimate.bacGdl.toFixed(3)} g/dL`)
+      updateStatus(`Settings saved. Est. BAC: ${estimate.bacGdl.toFixed(3)} g/dL`)
     } else {
-      updateStatus('BAC settings saved')
+      updateStatus('Settings saved')
     }
 
     closeBacSettingsModal()

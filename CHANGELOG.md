@@ -11,7 +11,7 @@ The BAC estimate now uses the same model as the Android Bacpacer app, so both ap
 
 ### Added
 - **Normal meal** food option, between light and heavy. "Light meal" now reads "Light meal or snack".
-- **Your build** replaces "Sex at birth" in BAC settings: Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight. Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet line shows the suggestion only when it differs from your pick.
+- **Your build** replaces "Sex at birth" in Settings: Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight. Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet line shows the suggestion only when it differs from your pick.
 - **I know my body fat %**: a body fat figure from a smart scale or fitness watch, used instead of the build. When it is off, the field shows the build's figure; turning it on starts from there.
 
 ### Changed
@@ -19,6 +19,8 @@ The BAC estimate now uses the same model as the Android Bacpacer app, so both ap
 - Food effects follow published studies (Jones & Jonsson 1997, Ramchandani et al. 2001). Extra absorption time: empty 30, light 45, normal 60, heavy 75 min (was 30 / 37.5 / 50). Share of alcohol reaching the blood: 100 / 90 / 82 / 76 % (was 100 / 88 / 85). After food the liver clears alcohol faster: x1.10 light, x1.25 normal, x1.35 heavy (was not modelled).
 - Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero. Small drinks no longer almost disappear: one glass of wine now shows a higher peak and a later sober-at time. Below 0.0005 g/dL (shown as 0.000) the estimate counts as zero.
 - Heavy meals now give a clearly lower peak and an earlier sober-at time than before.
+- Phone menu: "BAC settings" is now just **Settings**, and the order is Log a Drink, Drinks log, Presets, Settings, Reset Drinks (last, away from the everyday buttons).
+- A body fat figure outside 5-60 % is saved at the nearest limit instead of blocking Save.
 
 ### Fixed
 - Drinks timed in the future no longer count in the BAC estimate (the countdown already ignored them).

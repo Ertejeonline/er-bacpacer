@@ -30,10 +30,10 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - log a drink from the phone (ml and % with -/+ buttons, starts from the default drink)
   - tap a preset to load it as the default drink
   - view event log
-  - reset all drinks
   - open/edit/delete drink entries
-  - tune BAC settings
   - manage saved presets for common `ml` + `%` combinations
+  - Settings: metabolism, food, weight, height, date of birth, build or body fat
+  - reset all drinks
 
 ## Tech Stack
 

@@ -6,7 +6,7 @@ Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; re
 
 ## Layout
 - `g2/` - glasses app: `main.ts`, `app.ts`, `renderer.ts` (display), `state.ts`, `index.ts`
-- `src/` - phone companion UI (`main.ts`, `styles.css`): connect, event log, edit drinks, BAC settings, presets
+- `src/` - phone companion UI (`main.ts`, `styles.css`): connect, event log, edit drinks, presets, settings
 - `_shared/` - `body.ts` (builds, body fat suggestion), `app-types.ts`, `bridge-serializer.ts`, `background-state.ts`, `log.ts`
 - `tests/g2`, `tests/shared` - Vitest tests
 
