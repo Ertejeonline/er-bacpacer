@@ -3,11 +3,11 @@ import type { AppModule } from '../_shared/app-types'
 
 export const app: AppModule = {
   id: 'bacpacer',
-  name: 'Bacpacer',
+  name: 'BACpacer',
   connectLabel: 'Connect',
   actionLabel: 'Start',
   resetLabel: 'Reset Drinks',
-  initialStatus: 'Bacpacer ready',
+  initialStatus: 'BACpacer ready',
   createActions: createBacpacerActions,
 }
 

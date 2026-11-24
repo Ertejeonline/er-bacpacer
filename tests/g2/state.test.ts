@@ -9,10 +9,14 @@ import {
   formatBacGdl,
   formatDrinkEntryTime,
   calculateWidmarkFactor,
+  eliminationShare,
   getBacEstimateAt,
   getBacSettings,
   getBridge,
   getDrinkEntryEndTimestampMs,
+  getDrinkEntryPaceEndTimestampMs,
+  getPace,
+  setPace,
   getDrinkPresets,
   getStandbyCountdown,
   loadPersistedState,
@@ -31,6 +35,7 @@ import {
   updateDrinkPreset,
   updateDrinkEntry,
 } from '../../g2/state'
+import { DEFAULT_PACE, isDefaultPace, normalizePace, paceDrinkMs } from '../../_shared/pace'
 
 const DEFAULT_BAC_SETTINGS = { ...state.bacSettings }
 const MIN = 60_000
@@ -46,6 +51,7 @@ function resetState(): void {
   state.drinkEntries = []
   state.drinkPresets = []
   state.bacSettings = { ...DEFAULT_BAC_SETTINGS }
+  state.pace = { ...DEFAULT_PACE }
   setBridge({
     getLocalStorage: async () => null,
     setLocalStorage: async () => undefined,
@@ -341,7 +347,6 @@ describe('g2/state', () => {
       weightKg: 10,
       ageYears: 200,
       heightCm: 500,
-      sexAtBirth: 'female',
       foodProfile: 'invalid' as never,
     })
 
@@ -367,7 +372,6 @@ describe('g2/state', () => {
       ageYears: 99,
       weightKg: 70,
       heightCm: 175,
-      sexAtBirth: 'male',
     })
 
     const settings = getBacSettings()
@@ -376,22 +380,116 @@ describe('g2/state', () => {
     expect(settings.ageYears).toBeLessThanOrEqual(40)
   })
 
+  // Same model as the Android app: these are the reference values of its
+  // BacCalculatorTest (permille there, g/dL here = permille / 10).
+  function expectAndroidReference(
+    settings: Partial<typeof state.bacSettings>,
+    drinks: Array<[ml: number, percent: number, minutesFromNow: number]>,
+    bacPermille: number, peakPermille: number, peakMin: number, soberMin: number,
+  ): void {
+    const now = 1_800_000_000_000
+    state.bacSettings = { ...DEFAULT_BAC_SETTINGS, dateOfBirth: null, ...settings }
+    state.drinkEntries = drinks.map(([ml, percent, at]) => ({ ml, percent, timestampMs: now + at * MIN }))
+    const e = getBacEstimateAt(now)
+    expect(e.bacGdl).toBeCloseTo(bacPermille / 10, 8)
+    expect(e.peakBacGdl).toBeCloseTo(peakPermille / 10, 8)
+    expect(e.peakAtMs).toBe(now + peakMin * MIN)
+    expect(e.estimatedSoberAtMs).toBe(now + soberMin * MIN)
+    expect(e.isRisingToPeak).toBe(true)
+  }
+
+  it('matches the Android app: one beer 10 minutes ago, fit build, light meal', () => {
+    expectAndroidReference(
+      { build: 'fit', buildChosen: true, weightKg: 75, heightCm: 175, ageYears: 30, metabolismLevel: 3, foodProfile: 'light' },
+      [[500, 5, -10]],
+      0.027299144133994296, 0.15839608570755534, 85, 197,
+    )
+  })
+
+  it('matches the Android app: three wines, some extra weight, empty stomach', () => {
+    expectAndroidReference(
+      { build: 'someExtra', buildChosen: true, weightKg: 62, heightCm: 165, ageYears: 40, metabolismLevel: 2, foodProfile: 'empty' },
+      [[175, 13.5, -150], [175, 13.5, -100], [175, 13.5, -50]],
+      1.0981036659928165, 1.2242547132592598, 27, 738,
+    )
+  })
+
+  it('matches the Android app: 15 % body fat known, heavy meal', () => {
+    expectAndroidReference(
+      { build: 'average', buildChosen: true, bodyFatKnown: true, bodyFatPercent: 15, weightKg: 90, heightCm: 185, ageYears: 25, metabolismLevel: 4, foodProfile: 'heavy' },
+      [[40, 40, -20], [330, 5, -5]],
+      0.018280067164395727, 0.05762408464102832, 87, 135,
+    )
+  })
+
+  it('elimination slows down at low levels', () => {
+    expect(eliminationShare(1)).toBeCloseTo(1, 12)
+    expect(eliminationShare(0)).toBe(0)
+    expect(eliminationShare(0.5)).toBeGreaterThan(0.9)
+    expect(eliminationShare(0.1)).toBeCloseTo(0.7, 9)
+  })
+
+  it('more food means a lower and later peak and an earlier zero', () => {
+    const now = 1_800_000_000_000
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: now }]
+    const results = (['empty', 'light', 'normal', 'heavy'] as const).map((foodProfile) => {
+      state.bacSettings = { ...DEFAULT_BAC_SETTINGS, foodProfile }
+      return getBacEstimateAt(now)
+    })
+    for (let i = 1; i < results.length; i += 1) {
+      expect(results[i].peakBacGdl).toBeLessThan(results[i - 1].peakBacGdl)
+      expect(results[i].peakAtMs!).toBeGreaterThanOrEqual(results[i - 1].peakAtMs!)
+      expect(results[i].estimatedSoberAtMs!).toBeLessThanOrEqual(results[i - 1].estimatedSoberAtMs!)
+    }
+  })
+
+  it('ignores drinks that have not started yet in the BAC estimate', () => {
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: 2 * 60 * MIN }]
+    expect(getBacEstimateAt(60 * MIN).peakBacGdl).toBe(0)
+  })
+
+  it('keeps a normal meal setting', () => {
+    setBacSettings({ foodProfile: 'normal' })
+    expect(getBacSettings().foodProfile).toBe('normal')
+  })
+
   it('BAC estimate runs without error when body water factor is computed internally', () => {
-    setBacSettings({ weightKg: 80, heightCm: 180, sexAtBirth: 'male', dateOfBirth: '1985-01-01' })
+    setBacSettings({ weightKg: 80, heightCm: 180, build: 'fit', buildChosen: true, dateOfBirth: '1985-01-01' })
     expect(() => getBacEstimateAt(Date.now())).not.toThrow()
   })
 
-  it('derives the Widmark factor from Watson body water divided by 0.8 x weight', () => {
-    // Man, 75 kg, 175 cm, 30: body water 43.6 L -> 43.6 / (0.8 x 75) = 0.727
-    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 30, heightCm: 175, weightKg: 75 })).toBeCloseTo(0.727, 2)
-    // Woman, 65 kg, 165 cm: body water 31.57 L -> 31.57 / (0.8 x 65) = 0.607
-    expect(calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 30, heightCm: 165, weightKg: 65 })).toBeCloseTo(0.607, 2)
-    // Age only changes the male figure
-    const young = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 20, heightCm: 165, weightKg: 65 })
-    const old = calculateWidmarkFactor({ sexAtBirth: 'female', ageYears: 80, heightCm: 165, weightKg: 65 })
-    expect(young).toBe(old)
-    expect(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 80, heightCm: 175, weightKg: 75 }))
-      .toBeLessThan(calculateWidmarkFactor({ sexAtBirth: 'male', ageYears: 20, heightCm: 175, weightKg: 75 }))
+  it('derives the Widmark factor from body fat: 0.73 x (1 - fat) / 0.8', () => {
+    expect(calculateWidmarkFactor(20)).toBeCloseTo(0.73, 9)
+    expect(calculateWidmarkFactor(28)).toBeCloseTo(0.657, 9)
+    // More muscle (less fat) means more body water, so a lower BAC.
+    expect(calculateWidmarkFactor(12)).toBeGreaterThan(calculateWidmarkFactor(44))
+    expect(calculateWidmarkFactor(60)).toBe(0.4)
+  })
+
+  it('suggests a build from height, weight and age until the user picks one', () => {
+    setBacSettings({ weightKg: 75, heightCm: 175, dateOfBirth: null, ageYears: 30, buildChosen: false })
+    expect(getBacSettings().build).toBe('average')
+    setBacSettings({ weightKg: 120 })
+    expect(getBacSettings().build).toBe('lotsExtra')
+    expect(getBacSettings().buildChosen).toBe(false)
+
+    setBacSettings({ build: 'fit', buildChosen: true })
+    setBacSettings({ weightKg: 60 })
+    expect(getBacSettings().build).toBe('fit')
+    expect(getBacSettings().buildChosen).toBe(true)
+  })
+
+  it('uses the known body fat instead of the build', () => {
+    const now = 1_800_000_000_000
+    state.drinkEntries = [{ ml: 500, percent: 5, timestampMs: now - 30 * MIN }]
+    setBacSettings({ build: 'average', buildChosen: true, bodyFatKnown: false })
+    const fromBuild = getBacEstimateAt(now).bacGdl
+    setBacSettings({ bodyFatKnown: true, bodyFatPercent: 28 })
+    expect(getBacEstimateAt(now).bacGdl).toBeCloseTo(fromBuild, 12)
+    setBacSettings({ bodyFatPercent: 40 })
+    expect(getBacEstimateAt(now).bacGdl).toBeGreaterThan(fromBuild)
+    setBacSettings({ bodyFatPercent: 99 })
+    expect(getBacSettings().bodyFatPercent).toBe(60)
   })
 
   it('hydrates persisted state from bridge, prunes old entries, and re-saves', async () => {
@@ -439,6 +537,10 @@ describe('g2/state', () => {
     expect(state.bacSettings.dateOfBirth).toBe('2010-01-01')
     expect(state.bacSettings.ageYears).toBe(18)
     expect(state.bacSettings.heightCm).toBe(230)
+    // The old "sex at birth" became a build, kept as the user's choice.
+    expect('sexAtBirth' in state.bacSettings).toBe(false)
+    expect(state.bacSettings.build).toBe('lotsExtra')
+    expect(state.bacSettings.buildChosen).toBe(true)
     expect('useCustomBodyWaterFactor' in state.bacSettings).toBe(false)
     expect('eliminationRatePerHour' in state.bacSettings).toBe(false)
     expect('absorptionMinutes' in state.bacSettings).toBe(false)
@@ -617,5 +719,85 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
     expect(getBridge()).not.toBeNull()
     clearBridge()
     expect(getBridge()).toBeNull()
+  })
+})
+
+// Same cases as the Android app's PaceTest: the pace sets the countdown and
+// the drinks' end times, never the BAC estimate.
+describe('pace', () => {
+  beforeEach(() => {
+    resetState()
+  })
+
+  it('default pace is the old fixed pace', () => {
+    for (const [ml, percent] of [[100, 5], [175, 13.5], [25, 13.5], [25, 1], [330, 5], [40, 40], [200, 10]]) {
+      expect(paceDrinkMs(DEFAULT_PACE, ml, percent)).toBe(estimateDrinkDurationMs(ml, percent))
+    }
+  })
+
+  it('the drink of the pace itself takes the pace minutes', () => {
+    const pace = { ml: 330, percent: 5, minutes: 45 }
+    expect(paceDrinkMs(pace, 330, 5)).toBe(45 * MIN)
+    expect(paceDrinkMs(pace, 165, 10)).toBe(45 * MIN)
+  })
+
+  it('a slower pace means a longer wait, a faster one a shorter wait', () => {
+    state.drinkEntries = [{ ml: 175, percent: 13.5, timestampMs: 0 }]
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 47, carryOverMinutes: 0 })
+    setPace({ ml: 500, percent: 5, minutes: 100 })
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 95, carryOverMinutes: 0 })
+    setPace({ ml: 500, percent: 5, minutes: 25 })
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 24, carryOverMinutes: 0 })
+  })
+
+  it('carry-over follows the pace too', () => {
+    setPace({ ml: 300, percent: 5, minutes: 30 })
+    // Newest first, as stored.
+    state.drinkEntries = [
+      { ml: 300, percent: 5, timestampMs: 10 * MIN },
+      { ml: 300, percent: 5, timestampMs: 0 },
+    ]
+    expect(getStandbyCountdown(15 * MIN)).toEqual({ activeMinutes: 25, carryOverMinutes: 20 })
+  })
+
+  it('the pace never changes the BAC estimate or how long a drink is absorbed', () => {
+    state.drinkEntries = [{ ml: 175, percent: 13.5, timestampMs: 0 }]
+    const before = getBacEstimateAt(30 * MIN)
+    setPace({ ml: 500, percent: 5, minutes: 100 })
+    expect(getBacEstimateAt(30 * MIN)).toEqual(before)
+    expect(getDrinkEntryEndTimestampMs(state.drinkEntries[0])).toBe(47 * MIN)
+    expect(getDrinkEntryPaceEndTimestampMs(state.drinkEntries[0])).toBe(95 * MIN)
+  })
+
+  it('out-of-range values are clamped', () => {
+    expect(normalizePace({ ml: 1, percent: 100, minutes: 1 })).toEqual({ ml: 10, percent: 80, minutes: 5 })
+    expect(paceDrinkMs({ ml: 0, percent: 0, minutes: 0 }, 175, 13.5)).toBeGreaterThan(0)
+    setPace({ minutes: 9999 })
+    expect(getPace().minutes).toBe(240)
+  })
+
+  it('isDefaultPace', () => {
+    expect(isDefaultPace(DEFAULT_PACE)).toBe(true)
+    expect(isDefaultPace({ ...DEFAULT_PACE, minutes: 55 })).toBe(false)
+  })
+
+  it('is saved, and an older save without a pace gets the default', async () => {
+    const stored: Record<string, string> = {}
+    setBridge({
+      getLocalStorage: async (key: string) => stored[key] ?? null,
+      setLocalStorage: async (key: string, value: string) => { stored[key] = value; return undefined },
+    } as never)
+    setPace({ ml: 330, percent: 4.5, minutes: 40 })
+    await flushPersistedState()
+    state.pace = { ...DEFAULT_PACE }
+    await loadPersistedState()
+    expect(getPace()).toEqual({ ml: 330, percent: 4.5, minutes: 40 })
+
+    const key = Object.keys(stored)[0]
+    const old = JSON.parse(stored[key])
+    delete old.pace
+    stored[key] = JSON.stringify(old)
+    await loadPersistedState()
+    expect(getPace()).toEqual(DEFAULT_PACE)
   })
 })

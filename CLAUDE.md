@@ -1,13 +1,13 @@
-# Bacpacer (Even G2)
+# BACpacer (Even G2)
 
-Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.0.2, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
+Alcohol pacing app: log drinks on the glasses, see a countdown to the next drink window, estimate BAC. Version 2.1.0, package `com.er.bacpacer`, author Ertehe. Repo: https://github.com/Ertejeonline/er-bacpacer
 
 Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; release notes in `CHANGELOG.md`.
 
 ## Layout
 - `g2/` - glasses app: `main.ts`, `app.ts`, `renderer.ts` (display), `state.ts`, `index.ts`
-- `src/` - phone companion UI (`main.ts`, `styles.css`): connect, event log, edit drinks, BAC settings, presets
-- `_shared/` - `app-types.ts`, `bridge-serializer.ts`, `background-state.ts`, `log.ts`
+- `src/` - phone companion UI (`main.ts`, `styles.css`): connect, event log, edit drinks, presets, settings
+- `_shared/` - `body.ts` (builds, body fat suggestion), `app-types.ts`, `bridge-serializer.ts`, `background-state.ts`, `log.ts`
 - `tests/g2`, `tests/shared` - Vitest tests
 
 ## Commands
@@ -18,6 +18,8 @@ Read `../CLAUDE.md` for shared G2 rules. Full feature list is in `README.md`; re
 ## App-specific rules
 - Menu: Stand by, Log a drink, Summary, Presets.
 - The drink log is the single source of truth: a drink is its start time, amount (ml) and alcohol %. Its end is always calculated (start + ml x % / 50 min), never stored. The countdown and BAC are worked out from the log every time. Going through the log in order: a drink cut short by the next one adds the time it had left at that moment to the carry-over (the figure after the `+`, like `42 +8`; a drink already finished adds nothing); the last drink is the current countdown while unfinished; the carry-over holds while a drink is active and counts down only when none is (between drinks and after the last one). Durations are whole minutes. Keep it that way: no stored end times, planned ends or running carry-over totals.
+- **BAC maths = the Android app's** (owner's decision, 2.1.0): `getBacEstimateAt` is a port of `BacCalculator.estimate` in `../../Android/bacpacer/shared/src/main/kotlin/ai/ertehe/bacpacer/domain/BacCalculator.kt` (food options, Michaelis-Menten elimination, zero threshold, minute grid aligned on now, body fat from the build or the user's own figure; build list and suggestion in `_shared/body.ts`, matching Android's `Build`). Features differ between the apps on purpose; the times and BAC figures must not. When the model changes in one app, change the other too and keep the reference tests (`matches the Android app: ...` in `tests/g2/state.test.ts`) equal to Android's `BacCalculatorTest` (permille there, g/dL here).
+- **Pace = the Android app's** (2.1.0): `_shared/pace.ts` ports Android's `Pace` (default 500 ml at 5 % every 50 min, limits 10-2000 ml, 1-80 %, 5-240 min). The pace sets only the countdown and the drinks' end times (`getDrinkEntryPaceEndTimestampMs`); the BAC estimate keeps the fixed drink duration (`estimateDrinkDurationMs`, `getDrinkEntryEndTimestampMs`). Tests in the `pace` block mirror Android's `PaceTest`.
 - Presets sync from the phone to the glasses.
 - Bump `version` in both `package.json` and `app.json` for each release, and add a CHANGELOG entry.
 - Tests live in `tests/g2/` (renderer, state) and `tests/shared/` (serializer). Run `npm run test` after changing them.

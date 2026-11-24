@@ -174,6 +174,27 @@ button:disabled {
   background: var(--color-surface-secondary);
 }
 
+/* "Buy me a coffee": same green as the website's button (opens its Support page) */
+.app-btn--coffee {
+  /* A link, so it copies the button base style above */
+  padding: var(--spacing-button-padding, 12px);
+  border-style: solid;
+  font-size: 15px;
+  font-weight: 500;
+  background: #1a7f37;
+  border-color: #1a7f37;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.app-btn--coffee .btn-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.app-btn--coffee:hover {
+  background: #116329;
+}
+
 .hidden {
   display: none;
 }
@@ -307,6 +328,31 @@ button:disabled {
 
 select.field-input {
   appearance: none;
+  -webkit-appearance: none;
+  padding-right: 40px;
+}
+
+/* Down arrow drawn in CSS: the WebView ignores a background image on selects. */
+.select-wrap {
+  position: relative;
+}
+
+.select-wrap::after {
+  content: '';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--color-text-dim);
+  border-bottom: 2px solid var(--color-text-dim);
+  transform: translateY(-75%) rotate(45deg);
+  pointer-events: none;
+}
+
+.field-heading {
+  color: var(--color-text);
+  font-weight: 500;
 }
 
 #bacEstimatePreview {
@@ -502,4 +548,45 @@ select.field-input {
   margin: 12px 0 0;
   color: var(--color-negative);
   font-size: 14px;
+}
+
+/* Settings: pace reset link and the line between pace and the BAC fields */
+.link-btn {
+  justify-self: start;
+  width: auto;
+  text-align: left;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent, #377aff);
+  font: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.settings-sections {
+  display: grid;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+/* One group of settings: pace, food, about you */
+.settings-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.settings-section-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.settings-section > p {
+  margin: -6px 0 0;
 }

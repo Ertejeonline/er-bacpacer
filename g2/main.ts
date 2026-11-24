@@ -9,6 +9,7 @@ import {
   getBacEstimateAt,
   getBacEstimateWithSettings,
   getBacSettings,
+  getPace,
   getDrinkPresets,
   formatDrinkEntryTime,
   removeDrinkPreset,
@@ -16,6 +17,7 @@ import {
   flushPersistedState,
   clearBridge,
   setBacSettings,
+  setPace,
   setMenuItem,
   setFocusedMenuItem,
   setAddDrinkSubmenuVisible,
@@ -57,7 +59,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
   let displayRefreshQueued = false
   let teardownRegistered = false
   // Opening and closing the system contextual menu also fires
-  // FOREGROUND_ENTER/EXIT while Bacpacer stays on screen; see foreground-tracker.
+  // FOREGROUND_ENTER/EXIT while BACpacer stays on screen; see foreground-tracker.
   const foreground = createForegroundTracker()
 
   const stopRefreshTimer = () => {
@@ -256,7 +258,7 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
     connecting = true
 
     setStatus('Connecting to Even bridge...')
-    appendEventLog(`Bacpacer v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`)
+    appendEventLog(`BACpacer v${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'}`)
 
     try {
       const bridge = await withTimeout(waitForEvenAppBridge(), 6000)
@@ -579,6 +581,14 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
 
     updateBacSettings: (next) => {
       setBacSettings(next)
+      refreshDisplayIfActive()
+    },
+
+    getPace: () => getPace(),
+
+    // Only the countdown and the drinks' end times change; the BAC does not.
+    updatePace: (next) => {
+      setPace(next)
       refreshDisplayIfActive()
     },
 

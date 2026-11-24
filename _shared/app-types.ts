@@ -12,9 +12,10 @@ export type DrinkPreset = {
   percent: number
 }
 
-export type BacFoodProfile = 'empty' | 'light' | 'heavy'
+import type { BacBuild } from './body'
+import type { DrinkPace } from './pace'
 
-export type BacSexAtBirth = 'male' | 'female'
+export type BacFoodProfile = 'empty' | 'light' | 'normal' | 'heavy'
 
 export type BacMetabolismLevel = 1 | 2 | 3 | 4 | 5
 
@@ -29,7 +30,10 @@ export const METABOLISM_LEVEL_LABELS: Record<BacMetabolismLevel, string> = {
 export type BacUserSettings = {
   metabolismLevel: BacMetabolismLevel
   weightKg: number
-  sexAtBirth: BacSexAtBirth
+  build: BacBuild
+  buildChosen: boolean
+  bodyFatKnown: boolean
+  bodyFatPercent: number
   dateOfBirth: string | null
   ageYears: number
   heightCm: number
@@ -64,6 +68,8 @@ export type AppActions = {
   updateBacSettings?: (next: Partial<BacUserSettings>) => void
   getBacEstimate?: () => BacEstimate
   previewBacEstimate?: (overrideSettings: Partial<BacUserSettings>) => BacEstimate
+  getPace?: () => DrinkPace
+  updatePace?: (next: DrinkPace) => void
 }
 
 export type AppModule = {

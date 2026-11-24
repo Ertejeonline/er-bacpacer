@@ -9,7 +9,8 @@ import {
 } from '@evenrealities/even_hub_sdk'
 import { appendEventLog } from '../_shared/log'
 import { executeSerialized, resetBridgeSerializer } from '../_shared/bridge-serializer'
-import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryEndTimestampMs, getStandbyCountdown, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
+import { getBuildLabel } from '../_shared/body'
+import { formatBacGdl, formatDrinkEntryTime, getBacEstimateAt, getDrinkEntryPaceEndTimestampMs, getStandbyCountdown, state, getBridge, METABOLISM_LEVEL_LABELS, type BacEstimate, type MenuItem } from './state'
 
 const MENU_ITEMS: { id: MenuItem; label: string }[] = [
   { id: 'standBy', label: 'Stand by' },
@@ -156,7 +157,7 @@ function getMainRightContent(estimate: BacEstimate = getBacEstimateAt()): string
     const latest = `${state.drinkMl} ml    ${state.drinkPercent} %`
     const historyLines = state.drinkEntries.slice(0, MAX_RIGHT_HISTORY_LINES).map((entry) => {
       const start = formatDrinkEntryTime(entry.timestampMs)
-      const end = formatDrinkEntryTime(getDrinkEntryEndTimestampMs(entry))
+      const end = formatDrinkEntryTime(getDrinkEntryPaceEndTimestampMs(entry))
       return `${start}-${end}  ${entry.ml} ml  ${entry.percent}%`
     })
 
@@ -551,7 +552,7 @@ function getScreenBody(item: MenuItem): string {
         `Food: ${settings.foodProfile}`,
         `Weight: ${settings.weightKg} kg`,
         `Height: ${Math.round(settings.heightCm)} cm`,
-        `Sex: ${settings.sexAtBirth}`,
+        settings.bodyFatKnown ? `Body fat: ${settings.bodyFatPercent}%` : `Build: ${getBuildLabel(settings.build)}`,
         `Age: ${Math.round(settings.ageYears)}`,
       ].join('\n')
     }

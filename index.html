@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Bacpacer</title>
+    <title>BACpacer</title>
     <link rel="stylesheet" href="/src/styles.css">
 </head>
 
@@ -13,7 +13,7 @@
     <div id="app">
         <header class="app-header">
             <p class="eyebrow text-detail">Even G2 companion</p>
-            <h1 class="text-large-title">Bacpacer</h1>
+            <h1 class="text-large-title">BACpacer</h1>
             <p id="subtitle" class="text-normal-body">A pace assistant for wiser drinking decisions.</p>
         </header>
 
@@ -24,25 +24,31 @@
                     <span class="btn-label">Log a Drink</span>
                 </button>
 
-                <button id="resetBtn" class="app-btn app-btn--danger" style="display:none">
-                    <span class="btn-icon" aria-hidden="true">↺</span>
-                    <span class="btn-label">Reset Drinks</span>
-                </button>
-
                 <button id="drinksLogBtn" class="app-btn app-btn--primary" style="display:none">
                     <span class="btn-icon" aria-hidden="true">≣</span>
                     <span class="btn-label">Drinks log</span>
-                </button>
-
-                <button id="bacSettingsBtn" class="app-btn app-btn--primary" style="display:none">
-                    <span class="btn-icon" aria-hidden="true">⚙</span>
-                    <span class="btn-label">BAC settings</span>
                 </button>
 
                 <button id="presetsBtn" class="app-btn app-btn--primary" style="display:none">
                     <span class="btn-icon" aria-hidden="true">★</span>
                     <span class="btn-label">Presets</span>
                 </button>
+
+                <button id="bacSettingsBtn" class="app-btn app-btn--primary" style="display:none">
+                    <span class="btn-icon" aria-hidden="true">⚙</span>
+                    <span class="btn-label">Settings</span>
+                </button>
+
+                <button id="resetBtn" class="app-btn app-btn--danger" style="display:none">
+                    <span class="btn-icon" aria-hidden="true">↺</span>
+                    <span class="btn-label">Reset Drinks</span>
+                </button>
+
+                <a id="coffeeLink" class="app-btn app-btn--coffee" href="https://ertejeonline.github.io/support/"
+                    target="_blank" rel="noopener">
+                    <span class="btn-icon" aria-hidden="true">☕</span>
+                    <span class="btn-label">Buy me a coffee</span>
+                </a>
             </div>
         </section>
 
@@ -153,44 +159,98 @@
     <div id="bacSettingsModal" class="modal-overlay hidden" role="dialog" aria-modal="true"
         aria-labelledby="bacSettingsTitle">
         <div class="modal-card">
-            <h2 id="bacSettingsTitle" class="text-medium-title">BAC settings</h2>
+            <h2 id="bacSettingsTitle" class="text-medium-title">Settings</h2>
             <p id="bacEstimatePreview" class="text-normal-body"></p>
             <p id="bacSoberAtPreview" class="text-normal-body"></p>
-            <div class="form-grid">
-                <label class="field-block" for="bacMetabolismLevelInput">
-                    <span class="field-label">Metabolism</span>
-                    <div class="slider-with-label">
-                        <input id="bacMetabolismLevelInput" class="field-input" type="range" min="1" max="5" step="1" />
-                        <span id="bacMetabolismLevelLabel"></span>
+            <div class="settings-sections">
+                <section class="settings-section" aria-labelledby="paceSectionTitle">
+                    <h3 id="paceSectionTitle" class="settings-section-title">Your pace</h3>
+                    <p class="field-label">How fast you want to drink. Your pace does not change the BAC estimate.</p>
+                    <div class="field-block">
+                        <label class="field-label" for="paceMlInput">Amount (ml)</label>
+                        <div class="stepper">
+                            <button id="paceMlInputMinusBtn" type="button" class="stepper-btn"
+                                aria-label="Decrease amount by 10 ml">&minus;</button>
+                            <input id="paceMlInput" class="field-input stepper-input" type="number"
+                                inputmode="numeric" min="10" max="2000" step="any" />
+                            <button id="paceMlInputPlusBtn" type="button" class="stepper-btn"
+                                aria-label="Increase amount by 10 ml">+</button>
+                        </div>
                     </div>
-                </label>
-                <label class="field-block" for="bacFoodProfileInput">
-                    <span class="field-label">Food profile</span>
-                    <select id="bacFoodProfileInput" class="field-input">
-                        <option value="empty">Empty stomach</option>
-                        <option value="light">Light meal</option>
-                        <option value="heavy">Heavy meal</option>
-                    </select>
-                </label>
-                <label class="field-block" for="bacWeightKgInput">
-                    <span class="field-label">Weight (kg)</span>
-                    <input id="bacWeightKgInput" class="field-input" type="number" min="35" max="250" step="0.5" />
-                </label>
-                <label class="field-block" for="bacHeightCmInput">
-                    <span class="field-label">Height (cm)</span>
-                    <input id="bacHeightCmInput" class="field-input" type="number" min="130" max="230" step="1" />
-                </label>
-                <label class="field-block" for="bacSexAtBirthInput">
-                    <span class="field-label">Sex at birth</span>
-                    <select id="bacSexAtBirthInput" class="field-input">
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                    </select>
-                </label>
-                <label class="field-block" for="bacDateOfBirthInput">
-                    <span class="field-label">Date of birth</span>
-                    <input id="bacDateOfBirthInput" class="field-input" type="date" />
-                </label>
+                    <div class="field-block">
+                        <label class="field-label" for="pacePercentInput">Alcohol %</label>
+                        <div class="stepper">
+                            <button id="pacePercentInputMinusBtn" type="button" class="stepper-btn"
+                                aria-label="Decrease alcohol by 0.5 percent">&minus;</button>
+                            <input id="pacePercentInput" class="field-input stepper-input" type="number"
+                                inputmode="decimal" min="1" max="80" step="any" />
+                            <button id="pacePercentInputPlusBtn" type="button" class="stepper-btn"
+                                aria-label="Increase alcohol by 0.5 percent">+</button>
+                        </div>
+                    </div>
+                    <div class="field-block">
+                        <label class="field-label" for="paceMinutesInput">Your pace in minutes</label>
+                        <div class="stepper">
+                            <button id="paceMinutesInputMinusBtn" type="button" class="stepper-btn"
+                                aria-label="Decrease time by 5 minutes">&minus;</button>
+                            <input id="paceMinutesInput" class="field-input stepper-input" type="number"
+                                inputmode="numeric" min="5" max="240" step="any" />
+                            <button id="paceMinutesInputPlusBtn" type="button" class="stepper-btn"
+                                aria-label="Increase time by 5 minutes">+</button>
+                        </div>
+                    </div>
+                    <div class="field-block">
+                        <span id="paceExamples" class="field-label" aria-live="polite"></span>
+                        <button id="paceResetBtn" type="button" class="link-btn">Reset to default (500 ml at 5 % every 50 min)</button>
+                    </div>
+                </section>
+                <section class="settings-section" aria-labelledby="foodSectionTitle">
+                    <h3 id="foodSectionTitle" class="settings-section-title">Food</h3>
+                    <label class="field-block" for="bacFoodProfileInput">
+                        <span class="field-label">Food profile</span>
+                        <div class="select-wrap"><select id="bacFoodProfileInput" class="field-input">
+                            <option value="empty">Empty stomach</option>
+                            <option value="light">Light meal or snack</option>
+                            <option value="normal">Normal meal</option>
+                            <option value="heavy">Heavy meal</option>
+                        </select></div>
+                    </label>
+                </section>
+                <section class="settings-section" aria-labelledby="bodySectionTitle">
+                    <h3 id="bodySectionTitle" class="settings-section-title">About you</h3>
+                    <p class="field-label">Used only for the BAC estimate.</p>
+                    <label class="field-block" for="bacWeightKgInput">
+                        <span class="field-label">Weight (kg)</span>
+                        <input id="bacWeightKgInput" class="field-input" type="number" min="35" max="250" step="0.5" />
+                    </label>
+                    <label class="field-block" for="bacHeightCmInput">
+                        <span class="field-label">Height (cm)</span>
+                        <input id="bacHeightCmInput" class="field-input" type="number" min="130" max="230" step="1" />
+                    </label>
+                    <label class="field-block" for="bacDateOfBirthInput">
+                        <span class="field-label">Date of birth</span>
+                        <input id="bacDateOfBirthInput" class="field-input" type="date" />
+                    </label>
+                    <div class="field-block">
+                        <span class="field-label">Your build</span>
+                        <span class="field-label">More muscle means more body water to dilute alcohol, so a lower estimated BAC.</span>
+                        <span id="bacBuildSuggestion" class="field-label hidden"></span>
+                        <div id="bacBuildSelectWrap" class="select-wrap"><select id="bacBuildInput" class="field-input" aria-label="Your build"></select></div>
+                        <input id="bacBodyFatInput" class="field-input hidden" type="number" min="5" max="60" step="1" aria-label="Your body fat in %" />
+                        <span id="bacBodyFatLabel" class="field-label"></span>
+                    </div>
+                    <label class="field-checkbox" for="bacBodyFatKnownInput">
+                        <input id="bacBodyFatKnownInput" type="checkbox" />
+                        <span>I know my body fat %</span>
+                    </label>
+                    <label class="field-block" for="bacMetabolismLevelInput">
+                        <span class="field-label">Metabolism</span>
+                        <div class="slider-with-label">
+                            <input id="bacMetabolismLevelInput" class="field-input" type="range" min="1" max="5" step="1" />
+                            <span id="bacMetabolismLevelLabel"></span>
+                        </div>
+                    </label>
+                </section>
             </div>
             <div class="modal-actions">
                 <button id="saveBacSettingsBtn">Save</button>
@@ -246,7 +306,7 @@
         </div>
     </div>
 
-    <footer class="app-footer">Bacpacer <span id="appVersion"></span></footer>
+    <footer class="app-footer">BACpacer <span id="appVersion"></span></footer>
 
     <script type="module" src="/src/main.ts"></script>
 </body>

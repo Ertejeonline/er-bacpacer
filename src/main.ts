@@ -1,6 +1,15 @@
 import type { AppModule } from '../_shared/app-types'
 import { METABOLISM_LEVEL_LABELS } from '../_shared/app-types'
 import {
+  BODY_FAT_PERCENT_LIMITS,
+  BUILD_OPTIONS,
+  getBuildBodyFatPercent,
+  getBuildLabel,
+  isBacBuild,
+  suggestBuild,
+  type BacBuild,
+} from '../_shared/body'
+import {
   DRINK_ML_LIMITS,
   DRINK_PERCENT_LIMITS,
   formatDrinkMl,
@@ -9,6 +18,14 @@ import {
   stepDrinkValue,
   type DrinkFieldLimits,
 } from './drink-input'
+import {
+  DEFAULT_PACE,
+  PACE_LIMITS,
+  isDefaultPace,
+  normalizePace,
+  paceDrinkMs,
+  type DrinkPace,
+} from '../_shared/pace'
 
 // Phone UI: set to true to show the event log (title and box) under the status line.
 const SHOW_EVENT_LOG = false
@@ -49,11 +66,21 @@ async function boot() {
   const bacMetabolismLevelInput = document.getElementById('bacMetabolismLevelInput') as HTMLInputElement | null
   const bacMetabolismLevelLabel = document.getElementById('bacMetabolismLevelLabel') as HTMLSpanElement | null
   const bacWeightKgInput = document.getElementById('bacWeightKgInput') as HTMLInputElement | null
-  const bacSexAtBirthInput = document.getElementById('bacSexAtBirthInput') as HTMLSelectElement | null
+  const bacBuildInput = document.getElementById('bacBuildInput') as HTMLSelectElement | null
+  const bacBuildSelectWrap = document.getElementById('bacBuildSelectWrap')
+  const bacBuildSuggestion = document.getElementById('bacBuildSuggestion')
+  const bacBodyFatKnownInput = document.getElementById('bacBodyFatKnownInput') as HTMLInputElement | null
+  const bacBodyFatInput = document.getElementById('bacBodyFatInput') as HTMLInputElement | null
+  const bacBodyFatLabel = document.getElementById('bacBodyFatLabel')
   const bacDateOfBirthInput = document.getElementById('bacDateOfBirthInput') as HTMLInputElement | null
   const bacHeightCmInput = document.getElementById('bacHeightCmInput') as HTMLInputElement | null
   const bacFoodProfileInput = document.getElementById('bacFoodProfileInput') as HTMLSelectElement | null
   const saveBacSettingsBtn = document.getElementById('saveBacSettingsBtn') as HTMLButtonElement | null
+  const paceMlInput = document.getElementById('paceMlInput') as HTMLInputElement | null
+  const pacePercentInput = document.getElementById('pacePercentInput') as HTMLInputElement | null
+  const paceMinutesInput = document.getElementById('paceMinutesInput') as HTMLInputElement | null
+  const paceExamples = document.getElementById('paceExamples')
+  const paceResetBtn = document.getElementById('paceResetBtn') as HTMLButtonElement | null
   const cancelBacSettingsBtn = document.getElementById('cancelBacSettingsBtn') as HTMLButtonElement | null
   const presetsModal = document.getElementById('presetsModal')
   const presetsList = document.getElementById('presetsList')
@@ -107,9 +134,44 @@ async function boot() {
     return `${hours}:${minutes}`
   }
 
-  const estimateDrinkDurationMs = (ml: number, percent: number) => {
-    const fraction = percent >= 1 ? percent / 100 : percent
-    return Math.max(0, Math.round((ml * fraction) / 0.5) * 60_000)
+  const currentPace = (): DrinkPace => actions.getPace?.() ?? DEFAULT_PACE
+
+  // The pace fields as typed. Empty or not a number falls back to the saved
+  // pace; out of range is set to the nearest limit (normalizePace).
+  const readPaceFields = (): DrinkPace => {
+    const saved = currentPace()
+    const read = (input: HTMLInputElement | null, fallback: number) => {
+      const text = input?.value.trim() ?? ''
+      const value = Number(text)
+      return text !== '' && Number.isFinite(value) ? value : fallback
+    }
+    return normalizePace({
+      ml: read(paceMlInput, saved.ml),
+      percent: read(pacePercentInput, saved.percent),
+      minutes: read(paceMinutesInput, saved.minutes),
+    })
+  }
+
+  const fillPaceFields = (pace: DrinkPace) => {
+    if (paceMlInput) paceMlInput.value = String(pace.ml)
+    if (pacePercentInput) pacePercentInput.value = String(pace.percent)
+    if (paceMinutesInput) paceMinutesInput.value = String(pace.minutes)
+  }
+
+  const PACE_EXAMPLES = [
+    { name: 'Beer', ml: 330, percent: 5 },
+    { name: 'Wine', ml: 175, percent: 13.5 },
+    { name: 'Shot', ml: 40, percent: 40 },
+  ]
+
+  const refreshPaceExamples = () => {
+    const pace = readPaceFields()
+    if (paceExamples) {
+      paceExamples.textContent = 'At this pace: ' + PACE_EXAMPLES
+        .map((d) => `${d.name} ${d.ml} ml at ${d.percent} %: ${Math.round(paceDrinkMs(pace, d.ml, d.percent) / 60_000)} min`)
+        .join(' · ')
+    }
+    paceResetBtn?.classList.toggle('hidden', isDefaultPace(pace))
   }
 
   const deriveDateOfBirthFromAgeYears = (ageYears: number): string => {
@@ -216,6 +278,69 @@ async function boot() {
     confirmDeleteDrinkModal?.classList.add('hidden')
   }
 
+  if (bacBuildInput) {
+    for (const option of BUILD_OPTIONS) {
+      const el = document.createElement('option')
+      el.value = option.id
+      el.textContent = option.label
+      bacBuildInput.appendChild(el)
+    }
+  }
+
+  // Whether the user picked the build in this form or before; until then it
+  // follows the suggestion from height, weight and age.
+  let bacBuildChosen = false
+
+  const ageFromDateOfBirth = (dateOfBirth: string | null): number => {
+    if (!dateOfBirth) return 30
+    const [year, month, day] = dateOfBirth.split('-').map(Number)
+    const now = new Date()
+    let age = now.getFullYear() - year
+    if ((now.getMonth() + 1) < month || ((now.getMonth() + 1) === month && now.getDate() < day)) age -= 1
+    return Math.max(18, Math.min(100, age))
+  }
+
+  const refreshBuildFields = () => {
+    if (!bacBuildInput || !bacBodyFatKnownInput || !bacBodyFatInput) return
+    const weightKg = Number(bacWeightKgInput?.value)
+    const heightCm = Number(bacHeightCmInput?.value)
+    const ageYears = ageFromDateOfBirth(normalizeDateOfBirth(bacDateOfBirthInput?.value ?? ''))
+    const suggested = weightKg > 0 && heightCm > 0 ? suggestBuild(heightCm, weightKg, ageYears) : null
+    if (!bacBuildChosen && suggested) bacBuildInput.value = suggested
+    if (bacBuildSuggestion) {
+      const show = bacBuildChosen && suggested !== null && bacBuildInput.value !== suggested
+      bacBuildSuggestion.classList.toggle('hidden', !show)
+      bacBuildSuggestion.textContent = show && suggested ? `Suggested from your height and weight: ${getBuildLabel(suggested)}` : ''
+    }
+    // The dropdown and the body fat field take turns: ticking the box swaps the
+    // build for the user's own figure, which starts from the build's estimate.
+    const known = bacBodyFatKnownInput.checked
+    bacBuildSelectWrap?.classList.toggle('hidden', known)
+    bacBodyFatInput.classList.toggle('hidden', !known)
+    if (bacBuildSuggestion && known) bacBuildSuggestion.classList.add('hidden')
+    const buildBodyFat = isBacBuild(bacBuildInput.value) ? getBuildBodyFatPercent(bacBuildInput.value) : null
+    if (!known && buildBodyFat !== null) bacBodyFatInput.value = String(buildBodyFat)
+    if (bacBodyFatLabel) {
+      bacBodyFatLabel.textContent = known
+        ? 'Your body fat in %'
+        : `Body fat estimated from your build: ${buildBodyFat ?? '–'}%`
+    }
+  }
+
+  // A body fat figure outside 5-60 % is set to the nearest limit, and an empty
+  // field falls back to the build's figure. On save the field shows what was kept.
+  const readBuildFields = (showClamped = false): { build: BacBuild; buildChosen: boolean; bodyFatKnown: boolean; bodyFatPercent: number } | null => {
+    if (!bacBuildInput || !bacBodyFatKnownInput || !bacBodyFatInput) return null
+    const build = bacBuildInput.value
+    if (!isBacBuild(build)) return null
+    const typed = bacBodyFatInput.value.trim() === '' ? NaN : Number(bacBodyFatInput.value)
+    const bodyFatPercent = Number.isFinite(typed)
+      ? Math.round(Math.min(BODY_FAT_PERCENT_LIMITS.max, Math.max(BODY_FAT_PERCENT_LIMITS.min, typed)))
+      : getBuildBodyFatPercent(build)
+    if (showClamped) bacBodyFatInput.value = String(bodyFatPercent)
+    return { build, buildChosen: bacBuildChosen, bodyFatKnown: bacBodyFatKnownInput.checked, bodyFatPercent }
+  }
+
   const closeBacSettingsModal = () => {
     bacSettingsModal?.classList.add('hidden')
   }
@@ -260,7 +385,7 @@ async function boot() {
       || !bacSettingsModal
       || !bacMetabolismLevelInput
       || !bacWeightKgInput
-      || !bacSexAtBirthInput
+      || !bacBuildInput
       || !bacDateOfBirthInput
       || !bacHeightCmInput
       || !bacFoodProfileInput
@@ -274,10 +399,16 @@ async function boot() {
       bacMetabolismLevelLabel.textContent = METABOLISM_LEVEL_LABELS[settings.metabolismLevel]
     }
     bacWeightKgInput.value = String(settings.weightKg)
-    bacSexAtBirthInput.value = settings.sexAtBirth
+    bacBuildInput.value = settings.build
+    bacBuildChosen = settings.buildChosen
+    if (bacBodyFatKnownInput) bacBodyFatKnownInput.checked = settings.bodyFatKnown
+    if (bacBodyFatInput) bacBodyFatInput.value = String(settings.bodyFatPercent)
     bacDateOfBirthInput.value = settings.dateOfBirth ?? deriveDateOfBirthFromAgeYears(settings.ageYears)
     bacHeightCmInput.value = String(Math.round(settings.heightCm))
     bacFoodProfileInput.value = settings.foodProfile
+    refreshBuildFields()
+    fillPaceFields(currentPace())
+    refreshPaceExamples()
 
     const estimate = actions.getBacEstimate?.()
     if (bacEstimatePreview) {
@@ -292,25 +423,26 @@ async function boot() {
     }
 
     bacSettingsModal.classList.remove('hidden')
+    // Always open at the top (pace first), not where it was last scrolled to.
+    bacSettingsModal.querySelector('.modal-card')?.scrollTo(0, 0)
   }
 
   const updateLiveBacPreview = () => {
-    if (!actions.previewBacEstimate || !bacEstimatePreview || !bacMetabolismLevelInput || !bacWeightKgInput || !bacSexAtBirthInput || !bacDateOfBirthInput || !bacHeightCmInput || !bacFoodProfileInput) return
+    if (!actions.previewBacEstimate || !bacEstimatePreview || !bacMetabolismLevelInput || !bacWeightKgInput || !bacBuildInput || !bacDateOfBirthInput || !bacHeightCmInput || !bacFoodProfileInput) return
     const metabolismLevel = Number(bacMetabolismLevelInput.value)
     const weightKg = Number(bacWeightKgInput.value)
     const heightCm = Number(bacHeightCmInput.value)
-    const sexAtBirth = bacSexAtBirthInput.value
+    const buildFields = readBuildFields()
     const dateOfBirth = normalizeDateOfBirth(bacDateOfBirthInput.value)
     const foodProfile = bacFoodProfileInput.value
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
-    const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
-    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'heavy'
-    if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || !dateOfBirth || !validSexAtBirth || !validFoodProfile || !validMetabolismLevel) return
+    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
+    if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || !dateOfBirth || !buildFields || !validFoodProfile || !validMetabolismLevel) return
     const estimate = actions.previewBacEstimate({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
       weightKg,
       heightCm,
-      sexAtBirth,
+      ...buildFields,
       dateOfBirth,
       foodProfile,
     })
@@ -330,7 +462,7 @@ async function boot() {
     for (const entry of entries) {
       const dStart = new Date(entry.timestampMs)
       const startTime = dStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      const dEnd = new Date(entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent))
+      const dEnd = new Date(entry.timestampMs + paceDrinkMs(currentPace(), entry.ml, entry.percent))
       const endTime = dEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       const timeRange = `${startTime}-${endTime}`
 
@@ -637,17 +769,27 @@ async function boot() {
     }
     updateLiveBacPreview()
   })
-  bacWeightKgInput?.addEventListener('input', updateLiveBacPreview)
-  bacHeightCmInput?.addEventListener('input', updateLiveBacPreview)
-  bacSexAtBirthInput?.addEventListener('change', updateLiveBacPreview)
-  bacDateOfBirthInput?.addEventListener('change', updateLiveBacPreview)
+  const onBodyInput = () => {
+    refreshBuildFields()
+    updateLiveBacPreview()
+  }
+  bacWeightKgInput?.addEventListener('input', onBodyInput)
+  bacHeightCmInput?.addEventListener('input', onBodyInput)
+  bacDateOfBirthInput?.addEventListener('change', onBodyInput)
+  bacBuildInput?.addEventListener('change', () => {
+    bacBuildChosen = true
+    onBodyInput()
+  })
+  // Turning it on starts from the estimate it was showing.
+  bacBodyFatKnownInput?.addEventListener('change', onBodyInput)
+  bacBodyFatInput?.addEventListener('input', updateLiveBacPreview)
   bacFoodProfileInput?.addEventListener('change', updateLiveBacPreview)
   saveBacSettingsBtn?.addEventListener('click', () => {
     if (
       !actions.updateBacSettings
       || !bacMetabolismLevelInput
       || !bacWeightKgInput
-      || !bacSexAtBirthInput
+      || !bacBuildInput
       || !bacDateOfBirthInput
       || !bacHeightCmInput
       || !bacFoodProfileInput
@@ -657,30 +799,33 @@ async function boot() {
 
     const metabolismLevel = Number(bacMetabolismLevelInput.value)
     const weightKg = Number(bacWeightKgInput.value)
-    const sexAtBirth = bacSexAtBirthInput.value
+    const buildFields = readBuildFields(true)
     const dateOfBirth = normalizeDateOfBirth(bacDateOfBirthInput.value)
     const heightCm = Number(bacHeightCmInput.value)
     const foodProfile = bacFoodProfileInput.value
 
-    const validSexAtBirth = sexAtBirth === 'male' || sexAtBirth === 'female'
-    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'heavy'
+    const validFoodProfile = foodProfile === 'empty' || foodProfile === 'light' || foodProfile === 'normal' || foodProfile === 'heavy'
     const validMetabolismLevel = Number.isInteger(metabolismLevel) && metabolismLevel >= 1 && metabolismLevel <= 5
     if (
       !Number.isFinite(weightKg)
       || !Number.isFinite(heightCm)
       || !dateOfBirth
-      || !validSexAtBirth
+      || !buildFields
       || !validFoodProfile
       || !validMetabolismLevel
     ) {
-      updateStatus('Enter valid BAC settings')
+      updateStatus('Enter valid settings')
       return
     }
+
+    const pace = readPaceFields()
+    fillPaceFields(pace)
+    actions.updatePace?.(pace)
 
     actions.updateBacSettings({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
       weightKg,
-      sexAtBirth,
+      ...buildFields,
       dateOfBirth,
       heightCm,
       foodProfile,
@@ -688,9 +833,9 @@ async function boot() {
 
     const estimate = actions.getBacEstimate?.()
     if (estimate) {
-      updateStatus(`BAC settings saved. Est. BAC: ${estimate.bacGdl.toFixed(3)} g/dL`)
+      updateStatus(`Settings saved. Est. BAC: ${estimate.bacGdl.toFixed(3)} g/dL`)
     } else {
-      updateStatus('BAC settings saved')
+      updateStatus('Settings saved')
     }
 
     closeBacSettingsModal()
@@ -807,6 +952,23 @@ async function boot() {
     logDrinkPercentInput, logDrinkPercentMinusBtn, logDrinkPercentPlusBtn, DRINK_PERCENT_LIMITS,
     () => actions.getDrinkDefaults?.().percent ?? DRINK_PERCENT_LIMITS.min, formatDrinkPercent,
   )
+
+  // Settings → Your pace: -/+ steps of 10 ml, 0.5 % and 5 min, any value can be typed.
+  const paceFields: Array<[HTMLInputElement | null, keyof DrinkPace]> = [
+    [paceMlInput, 'ml'], [pacePercentInput, 'percent'], [paceMinutesInput, 'minutes'],
+  ]
+  for (const [input, key] of paceFields) {
+    const minus = document.getElementById(`${input?.id}MinusBtn`) as HTMLButtonElement | null
+    const plus = document.getElementById(`${input?.id}PlusBtn`) as HTMLButtonElement | null
+    bindStepper(input, minus, plus, PACE_LIMITS[key], () => currentPace()[key], (v) => String(v))
+    minus?.addEventListener('click', refreshPaceExamples)
+    plus?.addEventListener('click', refreshPaceExamples)
+    input?.addEventListener('input', refreshPaceExamples)
+  }
+  paceResetBtn?.addEventListener('click', () => {
+    fillPaceFields(DEFAULT_PACE)
+    refreshPaceExamples()
+  })
 
   for (const input of [logDrinkMlInput, logDrinkPercentInput]) {
     input?.addEventListener('input', () => showLogDrinkError(null))

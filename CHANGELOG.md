@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-24
+
+The BAC estimate now uses the same model as the Android BACpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
+
+### Added
+- **Your pace** It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
+- **Buy me a coffee** It opens the website's Support page (https://ertejeonline.github.io/support/) in a new tab.
+- **Normal meal** food option.
+- **Your build** replaces "Sex at birth" in Settings. Until you pick one it is suggested from your height, weight and age.
+- **I know my body fat %**: a body fat figure instead of the build.
+
+### Changed
+- Body water now comes from body fat instead of Watson's equations by sex.The glasses' Setup screen shows `Build:` (or `Body fat:`) instead of `Sex:`.
+- Food effects follow published studies (Jones & Jonsson 1997, Ramchandani et al. 2001)
+- Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero.
+- Heavy meals now give a clearly lower peak and an earlier sober-at time than before.
+- Settings is grouped into three boxes: **Your pace**, **Food** and **About you**
+- The app's name is written **BACpacer** everywhere (app name, phone page title and footer), like the Android app.
+- Phone menu: "BAC settings" is now just **Settings**
+
+### Fixed
+- Drinks timed in the future no longer count in the BAC estimate
+
 ## [2.0.2] - 2026-11-09
 
 ### Fixed
