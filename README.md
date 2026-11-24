@@ -18,6 +18,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - each entry is a start time, amount and alcohol %; its end time is calculated from those
   - the countdown is worked out from the log every time: a drink cut short by the next one adds the time it had left at that moment after the `+` in the glasses HUD (for example `42 +8`), the last drink is the current countdown, and the carry-over only counts down when no drink is active (between drinks and after the last one)
   - editing, adding or deleting a drink updates the countdown and BAC straight away, because they come from the same log
+  - each drink's countdown time comes from your pace (Settings → Your pace: an amount, alcohol % and minutes, by default 500 ml at 5 % every 50 min, so a 175 ml glass of 13.5 % wine is 47 min); the pace never changes the BAC estimate, same as the Android app
 - BAC estimate model:
   - tracks current BAC and peak BAC
   - shows trend arrows (rising `↗`, falling `↘`) in BAC displays
@@ -32,7 +33,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - view event log
   - open/edit/delete drink entries
   - manage saved presets for common `ml` + `%` combinations
-  - Settings: metabolism, food, weight, height, date of birth, build or body fat
+  - Settings: your pace, metabolism, food, weight, height, date of birth, build or body fat
   - reset all drinks
 
 ## Tech Stack

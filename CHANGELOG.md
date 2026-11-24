@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The BAC estimate now uses the same model as the Android Bacpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
 
 ### Added
+- **Your pace**, first in Settings: an amount, its alcohol % and minutes (by default 500 ml at 5 % every 50 min, the pace so far), with -/+ steps of 10 ml, 0.5 % and 5 min, examples for a beer, a glass of wine and a shot, and Reset to default. It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
 - **Normal meal** food option, between light and heavy. "Light meal" now reads "Light meal or snack".
 - **Your build** replaces "Sex at birth" in Settings: Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight. Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet line shows the suggestion only when it differs from your pick.
 - **I know my body fat %**: a body fat figure from a smart scale or fitness watch, used instead of the build. When it is off, the field shows the build's figure; turning it on starts from there.

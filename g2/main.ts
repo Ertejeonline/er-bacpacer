@@ -9,6 +9,7 @@ import {
   getBacEstimateAt,
   getBacEstimateWithSettings,
   getBacSettings,
+  getPace,
   getDrinkPresets,
   formatDrinkEntryTime,
   removeDrinkPreset,
@@ -16,6 +17,7 @@ import {
   flushPersistedState,
   clearBridge,
   setBacSettings,
+  setPace,
   setMenuItem,
   setFocusedMenuItem,
   setAddDrinkSubmenuVisible,
@@ -579,6 +581,14 @@ export async function createBacpacerActions(setStatus: SetStatus): Promise<AppAc
 
     updateBacSettings: (next) => {
       setBacSettings(next)
+      refreshDisplayIfActive()
+    },
+
+    getPace: () => getPace(),
+
+    // Only the countdown and the drinks' end times change; the BAC does not.
+    updatePace: (next) => {
+      setPace(next)
       refreshDisplayIfActive()
     },
 

@@ -157,6 +157,48 @@
             <p id="bacEstimatePreview" class="text-normal-body"></p>
             <p id="bacSoberAtPreview" class="text-normal-body"></p>
             <div class="form-grid">
+                <div class="field-block">
+                    <span class="field-label field-heading">Your pace</span>
+                    <span class="field-label">How fast you want to drink. The countdown uses it to time each drink. Drinks count by their alcohol, so a bigger or stronger drink gets more time. Your pace does not change the BAC estimate.</span>
+                </div>
+                <div class="field-block">
+                    <label class="field-label" for="paceMlInput">Amount (ml)</label>
+                    <div class="stepper">
+                        <button id="paceMlInputMinusBtn" type="button" class="stepper-btn"
+                            aria-label="Decrease amount by 10 ml">&minus;</button>
+                        <input id="paceMlInput" class="field-input stepper-input" type="number"
+                            inputmode="numeric" min="10" max="2000" step="any" />
+                        <button id="paceMlInputPlusBtn" type="button" class="stepper-btn"
+                            aria-label="Increase amount by 10 ml">+</button>
+                    </div>
+                </div>
+                <div class="field-block">
+                    <label class="field-label" for="pacePercentInput">Alcohol %</label>
+                    <div class="stepper">
+                        <button id="pacePercentInputMinusBtn" type="button" class="stepper-btn"
+                            aria-label="Decrease alcohol by 0.5 percent">&minus;</button>
+                        <input id="pacePercentInput" class="field-input stepper-input" type="number"
+                            inputmode="decimal" min="1" max="80" step="any" />
+                        <button id="pacePercentInputPlusBtn" type="button" class="stepper-btn"
+                            aria-label="Increase alcohol by 0.5 percent">+</button>
+                    </div>
+                </div>
+                <div class="field-block">
+                    <label class="field-label" for="paceMinutesInput">Every (minutes)</label>
+                    <div class="stepper">
+                        <button id="paceMinutesInputMinusBtn" type="button" class="stepper-btn"
+                            aria-label="Decrease time by 5 minutes">&minus;</button>
+                        <input id="paceMinutesInput" class="field-input stepper-input" type="number"
+                            inputmode="numeric" min="5" max="240" step="any" />
+                        <button id="paceMinutesInputPlusBtn" type="button" class="stepper-btn"
+                            aria-label="Increase time by 5 minutes">+</button>
+                    </div>
+                </div>
+                <div class="field-block">
+                    <span id="paceExamples" class="field-label" aria-live="polite"></span>
+                    <button id="paceResetBtn" type="button" class="link-btn">Reset to default (500 ml at 5 % every 50 min)</button>
+                </div>
+                <hr class="form-divider" />
                 <label class="field-block" for="bacMetabolismLevelInput">
                     <span class="field-label">Metabolism</span>
                     <div class="slider-with-label">

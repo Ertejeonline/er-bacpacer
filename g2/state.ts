@@ -10,7 +10,10 @@ import {
   type BacBuild,
 } from '../_shared/body'
 
+import { DEFAULT_PACE, normalizePace, paceDrinkMs, type DrinkPace } from '../_shared/pace'
+
 export type { BacBuild } from '../_shared/body'
+export type { DrinkPace } from '../_shared/pace'
 
 export type MenuItem = 'standBy' | 'adddrink' | 'setupdrink' | 'presets'
 
@@ -86,6 +89,7 @@ type PersistedState = {
   drinkEntries: DrinkEntry[]
   drinkPresets: DrinkPreset[]
   bacSettings: BacUserSettings
+  pace: DrinkPace
 }
 
 const BAC_SETTINGS_BOUNDS = {
@@ -152,6 +156,7 @@ const DEFAULT_PERSISTED_STATE: PersistedState = {
   drinkEntries: [],
   drinkPresets: [],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
+  pace: { ...DEFAULT_PACE },
 }
 
 export const state = {
@@ -165,6 +170,7 @@ export const state = {
   drinkEntries: [...DEFAULT_PERSISTED_STATE.drinkEntries],
   drinkPresets: [...DEFAULT_PERSISTED_STATE.drinkPresets],
   bacSettings: { ...DEFAULT_BAC_SETTINGS },
+  pace: { ...DEFAULT_PACE },
 }
 
 let _bridge: EvenAppBridge | null = null
@@ -211,17 +217,22 @@ function normalizeDrinkPreset(value: Partial<DrinkPreset> | undefined, fallbackI
   }
 }
 
-// How long a drink takes, in whole minutes (175 ml at 13.5% = 47 min), so the
-// countdown reads like the figure shown for the drink.
+// How long a drink takes for the BAC estimate (its absorption), in whole
+// minutes (175 ml at 13.5% = 47 min). Fixed: the user's pace never changes it.
 export function estimateDrinkDurationMs(ml: number, percent: number): number {
   const intervalMinutes = Math.round((ml * getPercentFraction(percent)) / 0.5)
   return Math.max(0, intervalMinutes * 60_000)
 }
 
-// When a drink finishes: its start plus the time its amount and alcohol take.
-// Calculated every time; it is never stored.
+// When a drink finishes being absorbed, for the BAC estimate: its start plus
+// the fixed duration above. Calculated every time; it is never stored.
 export function getDrinkEntryEndTimestampMs(entry: DrinkEntry): number {
   return entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent)
+}
+
+// When a drink's countdown ends at the user's pace (the drink log's end time).
+export function getDrinkEntryPaceEndTimestampMs(entry: DrinkEntry, pace: DrinkPace = state.pace): number {
+  return entry.timestampMs + paceDrinkMs(pace, entry.ml, entry.percent)
 }
 
 function normalizeFoodProfile(value: unknown): BacFoodProfile {
@@ -371,6 +382,7 @@ function toPersistedState(): PersistedState {
     })),
     drinkPresets: state.drinkPresets.slice(0, 100).map((preset) => normalizeDrinkPreset(preset, preset.id)),
     bacSettings: normalizeBacSettings(state.bacSettings),
+    pace: normalizePace(state.pace),
   }
 }
 
@@ -396,7 +408,7 @@ function getCountdownFromLog(entries: DrinkEntry[], nowMs: number): { activeRema
 
   for (let index = 0; index < started.length; index += 1) {
     const entry = started[index]
-    const finishMs = getDrinkEntryEndTimestampMs(entry)
+    const finishMs = getDrinkEntryPaceEndTimestampMs(entry)
 
     if (standbySinceMs !== null && entry.timestampMs > standbySinceMs) {
       carryOverMs = Math.max(0, carryOverMs - (entry.timestampMs - standbySinceMs))
@@ -523,6 +535,8 @@ function applyHydratedState(raw: string): void {
     if (parsed.bacSettings && typeof parsed.bacSettings === 'object') {
       state.bacSettings = normalizeBacSettings(parsed.bacSettings)
     }
+    // Saves from before 2.1.0 have no pace: they keep the default.
+    state.pace = normalizePace(parsed.pace)
   } catch (err) {
     console.warn('[bacpacer] failed to parse persisted state', err)
   }
@@ -623,6 +637,15 @@ export function setBacSettings(next: Partial<BacUserSettings>): void {
 
 export function getBacSettings(): BacUserSettings {
   return { ...state.bacSettings }
+}
+
+export function setPace(next: Partial<DrinkPace>): void {
+  state.pace = normalizePace({ ...state.pace, ...next })
+  savePersistedState()
+}
+
+export function getPace(): DrinkPace {
+  return { ...state.pace }
 }
 
 function createZeroBacEstimate(): BacEstimate {

@@ -14,6 +14,9 @@ import {
   getBacSettings,
   getBridge,
   getDrinkEntryEndTimestampMs,
+  getDrinkEntryPaceEndTimestampMs,
+  getPace,
+  setPace,
   getDrinkPresets,
   getStandbyCountdown,
   loadPersistedState,
@@ -32,6 +35,7 @@ import {
   updateDrinkPreset,
   updateDrinkEntry,
 } from '../../g2/state'
+import { DEFAULT_PACE, isDefaultPace, normalizePace, paceDrinkMs } from '../../_shared/pace'
 
 const DEFAULT_BAC_SETTINGS = { ...state.bacSettings }
 const MIN = 60_000
@@ -47,6 +51,7 @@ function resetState(): void {
   state.drinkEntries = []
   state.drinkPresets = []
   state.bacSettings = { ...DEFAULT_BAC_SETTINGS }
+  state.pace = { ...DEFAULT_PACE }
   setBridge({
     getLocalStorage: async () => null,
     setLocalStorage: async () => undefined,
@@ -714,5 +719,85 @@ describe('g2/state persistence debounce & bridge lifecycle', () => {
     expect(getBridge()).not.toBeNull()
     clearBridge()
     expect(getBridge()).toBeNull()
+  })
+})
+
+// Same cases as the Android app's PaceTest: the pace sets the countdown and
+// the drinks' end times, never the BAC estimate.
+describe('pace', () => {
+  beforeEach(() => {
+    resetState()
+  })
+
+  it('default pace is the old fixed pace', () => {
+    for (const [ml, percent] of [[100, 5], [175, 13.5], [25, 13.5], [25, 1], [330, 5], [40, 40], [200, 10]]) {
+      expect(paceDrinkMs(DEFAULT_PACE, ml, percent)).toBe(estimateDrinkDurationMs(ml, percent))
+    }
+  })
+
+  it('the drink of the pace itself takes the pace minutes', () => {
+    const pace = { ml: 330, percent: 5, minutes: 45 }
+    expect(paceDrinkMs(pace, 330, 5)).toBe(45 * MIN)
+    expect(paceDrinkMs(pace, 165, 10)).toBe(45 * MIN)
+  })
+
+  it('a slower pace means a longer wait, a faster one a shorter wait', () => {
+    state.drinkEntries = [{ ml: 175, percent: 13.5, timestampMs: 0 }]
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 47, carryOverMinutes: 0 })
+    setPace({ ml: 500, percent: 5, minutes: 100 })
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 95, carryOverMinutes: 0 })
+    setPace({ ml: 500, percent: 5, minutes: 25 })
+    expect(getStandbyCountdown(0)).toEqual({ activeMinutes: 24, carryOverMinutes: 0 })
+  })
+
+  it('carry-over follows the pace too', () => {
+    setPace({ ml: 300, percent: 5, minutes: 30 })
+    // Newest first, as stored.
+    state.drinkEntries = [
+      { ml: 300, percent: 5, timestampMs: 10 * MIN },
+      { ml: 300, percent: 5, timestampMs: 0 },
+    ]
+    expect(getStandbyCountdown(15 * MIN)).toEqual({ activeMinutes: 25, carryOverMinutes: 20 })
+  })
+
+  it('the pace never changes the BAC estimate or how long a drink is absorbed', () => {
+    state.drinkEntries = [{ ml: 175, percent: 13.5, timestampMs: 0 }]
+    const before = getBacEstimateAt(30 * MIN)
+    setPace({ ml: 500, percent: 5, minutes: 100 })
+    expect(getBacEstimateAt(30 * MIN)).toEqual(before)
+    expect(getDrinkEntryEndTimestampMs(state.drinkEntries[0])).toBe(47 * MIN)
+    expect(getDrinkEntryPaceEndTimestampMs(state.drinkEntries[0])).toBe(95 * MIN)
+  })
+
+  it('out-of-range values are clamped', () => {
+    expect(normalizePace({ ml: 1, percent: 100, minutes: 1 })).toEqual({ ml: 10, percent: 80, minutes: 5 })
+    expect(paceDrinkMs({ ml: 0, percent: 0, minutes: 0 }, 175, 13.5)).toBeGreaterThan(0)
+    setPace({ minutes: 9999 })
+    expect(getPace().minutes).toBe(240)
+  })
+
+  it('isDefaultPace', () => {
+    expect(isDefaultPace(DEFAULT_PACE)).toBe(true)
+    expect(isDefaultPace({ ...DEFAULT_PACE, minutes: 55 })).toBe(false)
+  })
+
+  it('is saved, and an older save without a pace gets the default', async () => {
+    const stored: Record<string, string> = {}
+    setBridge({
+      getLocalStorage: async (key: string) => stored[key] ?? null,
+      setLocalStorage: async (key: string, value: string) => { stored[key] = value; return undefined },
+    } as never)
+    setPace({ ml: 330, percent: 4.5, minutes: 40 })
+    await flushPersistedState()
+    state.pace = { ...DEFAULT_PACE }
+    await loadPersistedState()
+    expect(getPace()).toEqual({ ml: 330, percent: 4.5, minutes: 40 })
+
+    const key = Object.keys(stored)[0]
+    const old = JSON.parse(stored[key])
+    delete old.pace
+    stored[key] = JSON.stringify(old)
+    await loadPersistedState()
+    expect(getPace()).toEqual(DEFAULT_PACE)
   })
 })

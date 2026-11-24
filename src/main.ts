@@ -18,6 +18,14 @@ import {
   stepDrinkValue,
   type DrinkFieldLimits,
 } from './drink-input'
+import {
+  DEFAULT_PACE,
+  PACE_LIMITS,
+  isDefaultPace,
+  normalizePace,
+  paceDrinkMs,
+  type DrinkPace,
+} from '../_shared/pace'
 
 // Phone UI: set to true to show the event log (title and box) under the status line.
 const SHOW_EVENT_LOG = false
@@ -68,6 +76,11 @@ async function boot() {
   const bacHeightCmInput = document.getElementById('bacHeightCmInput') as HTMLInputElement | null
   const bacFoodProfileInput = document.getElementById('bacFoodProfileInput') as HTMLSelectElement | null
   const saveBacSettingsBtn = document.getElementById('saveBacSettingsBtn') as HTMLButtonElement | null
+  const paceMlInput = document.getElementById('paceMlInput') as HTMLInputElement | null
+  const pacePercentInput = document.getElementById('pacePercentInput') as HTMLInputElement | null
+  const paceMinutesInput = document.getElementById('paceMinutesInput') as HTMLInputElement | null
+  const paceExamples = document.getElementById('paceExamples')
+  const paceResetBtn = document.getElementById('paceResetBtn') as HTMLButtonElement | null
   const cancelBacSettingsBtn = document.getElementById('cancelBacSettingsBtn') as HTMLButtonElement | null
   const presetsModal = document.getElementById('presetsModal')
   const presetsList = document.getElementById('presetsList')
@@ -121,9 +134,44 @@ async function boot() {
     return `${hours}:${minutes}`
   }
 
-  const estimateDrinkDurationMs = (ml: number, percent: number) => {
-    const fraction = percent >= 1 ? percent / 100 : percent
-    return Math.max(0, Math.round((ml * fraction) / 0.5) * 60_000)
+  const currentPace = (): DrinkPace => actions.getPace?.() ?? DEFAULT_PACE
+
+  // The pace fields as typed. Empty or not a number falls back to the saved
+  // pace; out of range is set to the nearest limit (normalizePace).
+  const readPaceFields = (): DrinkPace => {
+    const saved = currentPace()
+    const read = (input: HTMLInputElement | null, fallback: number) => {
+      const text = input?.value.trim() ?? ''
+      const value = Number(text)
+      return text !== '' && Number.isFinite(value) ? value : fallback
+    }
+    return normalizePace({
+      ml: read(paceMlInput, saved.ml),
+      percent: read(pacePercentInput, saved.percent),
+      minutes: read(paceMinutesInput, saved.minutes),
+    })
+  }
+
+  const fillPaceFields = (pace: DrinkPace) => {
+    if (paceMlInput) paceMlInput.value = String(pace.ml)
+    if (pacePercentInput) pacePercentInput.value = String(pace.percent)
+    if (paceMinutesInput) paceMinutesInput.value = String(pace.minutes)
+  }
+
+  const PACE_EXAMPLES = [
+    { name: 'Beer', ml: 330, percent: 5 },
+    { name: 'Wine', ml: 175, percent: 13.5 },
+    { name: 'Shot', ml: 40, percent: 40 },
+  ]
+
+  const refreshPaceExamples = () => {
+    const pace = readPaceFields()
+    if (paceExamples) {
+      paceExamples.textContent = 'At this pace: ' + PACE_EXAMPLES
+        .map((d) => `${d.name} ${d.ml} ml at ${d.percent} %: ${Math.round(paceDrinkMs(pace, d.ml, d.percent) / 60_000)} min`)
+        .join(' · ')
+    }
+    paceResetBtn?.classList.toggle('hidden', isDefaultPace(pace))
   }
 
   const deriveDateOfBirthFromAgeYears = (ageYears: number): string => {
@@ -359,6 +407,8 @@ async function boot() {
     bacHeightCmInput.value = String(Math.round(settings.heightCm))
     bacFoodProfileInput.value = settings.foodProfile
     refreshBuildFields()
+    fillPaceFields(currentPace())
+    refreshPaceExamples()
 
     const estimate = actions.getBacEstimate?.()
     if (bacEstimatePreview) {
@@ -373,6 +423,8 @@ async function boot() {
     }
 
     bacSettingsModal.classList.remove('hidden')
+    // Always open at the top (pace first), not where it was last scrolled to.
+    bacSettingsModal.querySelector('.modal-card')?.scrollTo(0, 0)
   }
 
   const updateLiveBacPreview = () => {
@@ -410,7 +462,7 @@ async function boot() {
     for (const entry of entries) {
       const dStart = new Date(entry.timestampMs)
       const startTime = dStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      const dEnd = new Date(entry.timestampMs + estimateDrinkDurationMs(entry.ml, entry.percent))
+      const dEnd = new Date(entry.timestampMs + paceDrinkMs(currentPace(), entry.ml, entry.percent))
       const endTime = dEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       const timeRange = `${startTime}-${endTime}`
 
@@ -766,6 +818,10 @@ async function boot() {
       return
     }
 
+    const pace = readPaceFields()
+    fillPaceFields(pace)
+    actions.updatePace?.(pace)
+
     actions.updateBacSettings({
       metabolismLevel: metabolismLevel as 1 | 2 | 3 | 4 | 5,
       weightKg,
@@ -896,6 +952,23 @@ async function boot() {
     logDrinkPercentInput, logDrinkPercentMinusBtn, logDrinkPercentPlusBtn, DRINK_PERCENT_LIMITS,
     () => actions.getDrinkDefaults?.().percent ?? DRINK_PERCENT_LIMITS.min, formatDrinkPercent,
   )
+
+  // Settings → Your pace: -/+ steps of 10 ml, 0.5 % and 5 min, any value can be typed.
+  const paceFields: Array<[HTMLInputElement | null, keyof DrinkPace]> = [
+    [paceMlInput, 'ml'], [pacePercentInput, 'percent'], [paceMinutesInput, 'minutes'],
+  ]
+  for (const [input, key] of paceFields) {
+    const minus = document.getElementById(`${input?.id}MinusBtn`) as HTMLButtonElement | null
+    const plus = document.getElementById(`${input?.id}PlusBtn`) as HTMLButtonElement | null
+    bindStepper(input, minus, plus, PACE_LIMITS[key], () => currentPace()[key], (v) => String(v))
+    minus?.addEventListener('click', refreshPaceExamples)
+    plus?.addEventListener('click', refreshPaceExamples)
+    input?.addEventListener('input', refreshPaceExamples)
+  }
+  paceResetBtn?.addEventListener('click', () => {
+    fillPaceFields(DEFAULT_PACE)
+    refreshPaceExamples()
+  })
 
   for (const input of [logDrinkMlInput, logDrinkPercentInput]) {
     input?.addEventListener('input', () => showLogDrinkError(null))

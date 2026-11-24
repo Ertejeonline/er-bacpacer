@@ -13,6 +13,7 @@ export type DrinkPreset = {
 }
 
 import type { BacBuild } from './body'
+import type { DrinkPace } from './pace'
 
 export type BacFoodProfile = 'empty' | 'light' | 'normal' | 'heavy'
 
@@ -67,6 +68,8 @@ export type AppActions = {
   updateBacSettings?: (next: Partial<BacUserSettings>) => void
   getBacEstimate?: () => BacEstimate
   previewBacEstimate?: (overrideSettings: Partial<BacUserSettings>) => BacEstimate
+  getPace?: () => DrinkPace
+  updatePace?: (next: DrinkPace) => void
 }
 
 export type AppModule = {
