@@ -10,25 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The BAC estimate now uses the same model as the Android BACpacer app, so both apps give the same BAC, peak and sober-at time for the same drinks and settings. The countdown and drink durations were already the same and are unchanged.
 
 ### Added
-- **Your pace**, first in Settings: an amount, its alcohol % and minutes (by default 500 ml at 5 % every 50 min, the pace so far), with -/+ steps of 10 ml, 0.5 % and 5 min, examples for a beer, a glass of wine and a shot, and Reset to default. It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
-- **Buy me a coffee** at the bottom of the phone menu, green with a ☕ like the website's button. It opens the website's Support page (https://ertejeonline.github.io/support/) in a new tab.
-- **Normal meal** food option, between light and heavy. "Light meal" now reads "Light meal or snack".
-- **Your build** replaces "Sex at birth" in Settings: a dropdown with Very lean or muscular, Fit, Average, Some extra weight, A lot of extra weight, under the hint "More muscle means more body water to dilute alcohol, so a lower estimated BAC". Until you pick one it is suggested from your height, weight and age, and follows them when they change; once picked it stays, and a quiet "Suggested from your height and weight" line shows only when it differs from your pick. Below it: "Body fat estimated from your build: XX%".
-- **I know my body fat %**: a body fat figure from a smart scale or fitness watch, used instead of the build. Ticking it swaps the build dropdown for a body fat field, starting from the build's figure; unticking brings the dropdown back.
+- **Your pace** It sets the countdown and the drinks' end times; the BAC estimate never uses it. Same as the Android app's Settings → Pace.
+- **Buy me a coffee** It opens the website's Support page (https://ertejeonline.github.io/support/) in a new tab.
+- **Normal meal** food option.
+- **Your build** replaces "Sex at birth" in Settings. Until you pick one it is suggested from your height, weight and age.
+- **I know my body fat %**: a body fat figure instead of the build.
 
 ### Changed
-- Body water now comes from body fat (73 % of everything that is not fat) instead of Watson's equations by sex. Saved settings with a sex are converted once into the build that fits it and kept as your choice. The glasses' Setup screen shows `Build:` (or `Body fat:`) instead of `Sex:`.
-- Food effects follow published studies (Jones & Jonsson 1997, Ramchandani et al. 2001). Extra absorption time: empty 30, light 45, normal 60, heavy 75 min (was 30 / 37.5 / 50). Share of alcohol reaching the blood: 100 / 90 / 82 / 76 % (was 100 / 88 / 85). After food the liver clears alcohol faster: x1.10 light, x1.25 normal, x1.35 heavy (was not modelled).
-- Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero. Small drinks no longer almost disappear: one glass of wine now shows a higher peak and a later sober-at time. Below 0.0005 g/dL (shown as 0.000) the estimate counts as zero.
+- Body water now comes from body fat instead of Watson's equations by sex.The glasses' Setup screen shows `Build:` (or `Body fat:`) instead of `Sex:`.
+- Food effects follow published studies (Jones & Jonsson 1997, Ramchandani et al. 2001)
+- Elimination slows down at low levels (Michaelis-Menten) instead of running at full speed down to zero.
 - Heavy meals now give a clearly lower peak and an earlier sober-at time than before.
-- Settings is grouped into three boxes: **Your pace**, **Food** and **About you** (weight, height, date of birth, build or body fat, metabolism).
+- Settings is grouped into three boxes: **Your pace**, **Food** and **About you**
 - The app's name is written **BACpacer** everywhere (app name, phone page title and footer), like the Android app.
-- Phone menu: "BAC settings" is now just **Settings**, and the order is Log a Drink, Drinks log, Presets, Settings, Reset Drinks (last, away from the everyday buttons).
-- A body fat figure outside 5-60 % is saved at the nearest limit instead of blocking Save.
-- Dropdowns (Food profile, Your build) show a down arrow, so they read as dropdowns.
+- Phone menu: "BAC settings" is now just **Settings**
 
 ### Fixed
-- Drinks timed in the future no longer count in the BAC estimate (the countdown already ignored them).
+- Drinks timed in the future no longer count in the BAC estimate
 
 ## [2.0.2] - 2026-11-09
 
