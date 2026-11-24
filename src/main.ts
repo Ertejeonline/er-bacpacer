@@ -59,6 +59,7 @@ async function boot() {
   const bacMetabolismLevelLabel = document.getElementById('bacMetabolismLevelLabel') as HTMLSpanElement | null
   const bacWeightKgInput = document.getElementById('bacWeightKgInput') as HTMLInputElement | null
   const bacBuildInput = document.getElementById('bacBuildInput') as HTMLSelectElement | null
+  const bacBuildSelectWrap = document.getElementById('bacBuildSelectWrap')
   const bacBuildSuggestion = document.getElementById('bacBuildSuggestion')
   const bacBodyFatKnownInput = document.getElementById('bacBodyFatKnownInput') as HTMLInputElement | null
   const bacBodyFatInput = document.getElementById('bacBodyFatInput') as HTMLInputElement | null
@@ -233,7 +234,7 @@ async function boot() {
     for (const option of BUILD_OPTIONS) {
       const el = document.createElement('option')
       el.value = option.id
-      el.textContent = `${option.label} (${option.description.toLowerCase()})`
+      el.textContent = option.label
       bacBuildInput.appendChild(el)
     }
   }
@@ -266,7 +267,7 @@ async function boot() {
     // The dropdown and the body fat field take turns: ticking the box swaps the
     // build for the user's own figure, which starts from the build's estimate.
     const known = bacBodyFatKnownInput.checked
-    bacBuildInput.classList.toggle('hidden', known)
+    bacBuildSelectWrap?.classList.toggle('hidden', known)
     bacBodyFatInput.classList.toggle('hidden', !known)
     if (bacBuildSuggestion && known) bacBuildSuggestion.classList.add('hidden')
     const buildBodyFat = isBacBuild(bacBuildInput.value) ? getBuildBodyFatPercent(bacBuildInput.value) : null

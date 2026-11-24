@@ -166,12 +166,12 @@
                 </label>
                 <label class="field-block" for="bacFoodProfileInput">
                     <span class="field-label">Food profile</span>
-                    <select id="bacFoodProfileInput" class="field-input">
+                    <div class="select-wrap"><select id="bacFoodProfileInput" class="field-input">
                         <option value="empty">Empty stomach</option>
                         <option value="light">Light meal or snack</option>
                         <option value="normal">Normal meal</option>
                         <option value="heavy">Heavy meal</option>
-                    </select>
+                    </select></div>
                 </label>
                 <label class="field-block" for="bacWeightKgInput">
                     <span class="field-label">Weight (kg)</span>
@@ -189,7 +189,7 @@
                     <span class="field-label field-heading">Your build</span>
                     <span class="field-label">More muscle means more body water to dilute alcohol, so a lower estimated BAC.</span>
                     <span id="bacBuildSuggestion" class="field-label hidden"></span>
-                    <select id="bacBuildInput" class="field-input" aria-label="Your build"></select>
+                    <div id="bacBuildSelectWrap" class="select-wrap"><select id="bacBuildInput" class="field-input" aria-label="Your build"></select></div>
                     <input id="bacBodyFatInput" class="field-input hidden" type="number" min="5" max="60" step="1" aria-label="Your body fat in %" />
                     <span id="bacBodyFatLabel" class="field-label"></span>
                 </div>
