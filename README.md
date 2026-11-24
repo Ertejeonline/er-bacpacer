@@ -35,6 +35,7 @@ It lets you log drinks on-glasses, shows a countdown until the next drink window
   - manage saved presets for common `ml` + `%` combinations
   - Settings: your pace, metabolism, food, weight, height, date of birth, build or body fat
   - reset all drinks
+  - Buy me a coffee: opens the website's Support page (https://ertejeonline.github.io/support/)
 
 ## Tech Stack
 
